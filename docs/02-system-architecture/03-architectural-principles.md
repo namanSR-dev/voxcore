@@ -94,7 +94,7 @@ Without common engineering principles, different contributors naturally make dif
 
 Over time this can lead to:
 
-- Inconsistent module boundaries
+- Inconsistent component boundaries
 - Tightly coupled components
 - Duplicated responsibilities
 - Difficult testing
@@ -134,16 +134,20 @@ These principles should be treated as non-negotiable engineering rules unless an
 
 Every module, package, and component shall own one primary responsibility.
 
-A responsibility represents a single reason for change. Components should not combine unrelated concerns such as conversation orchestration, provider implementation, logging configuration, authentication, and transport handling.
+A responsibility represents a single reason for change. Components should not combine unrelated concerns such as pipeline execution, provider implementation, logging configuration, authentication, and transport handling.
 
 **Design rule:** If a module has multiple unrelated reasons to change, split the responsibilities.
 
 **Good examples:**
 
 - Speech Recognition
-- Conversation Engine
-- Tool Engine
-- Memory Manager
+- Runtime Execution Pipeline
+- Runtime Scheduler
+- Tool Manager
+- Conversation Service
+- Tool Service
+- ProviderSelectionStrategy
+- ConversationStore
 - Provider Registry
 
 **Bad example:**
@@ -151,13 +155,13 @@ A responsibility represents a single reason for change. Components should not co
 ```mermaid
 %%{init: {"theme": "base", "themeVariables": {"primaryColor": "#FFE8E8", "primaryTextColor": "#3A1111", "primaryBorderColor": "#D64545", "lineColor": "#D64545", "fontFamily": "Inter, Segoe UI, Arial"}}}%%
 flowchart TD
-    mixed["Conversation Engine"] --> llm["LLM Calls"]
+    mixed["Conversation Manager"] --> llm["LLM Calls"]
     llm --> logging["Logging"]
     logging --> config["Configuration"]
     config --> auth["Authentication"]
 ```
 
-The example above combines orchestration, provider calls, logging, configuration, and authentication in one responsibility chain. That design should be split into clearer module boundaries.
+The example above combines boundary coordination, provider calls, logging, configuration, and authentication in one responsibility chain. That design should be split into clearer component boundaries.
 
 ### Principle 2: High Cohesion
 
@@ -171,7 +175,7 @@ Modules should expose complete capabilities rather than fragmented behavior scat
 
 Modules should depend on as few other modules as possible.
 
-Dependencies should be explicit, directional, and stable. Changes within one module should have minimal impact on unrelated modules. Communication should occur through well-defined interfaces rather than internal implementation details.
+Dependencies should be explicit, directional, and stable. Changes within one component should have minimal impact on unrelated components. Communication should occur through well-defined interfaces rather than internal implementation details.
 
 **Design rule:** A module should know what it needs from another module, but not how that module performs its internal work.
 
@@ -179,14 +183,14 @@ Dependencies should be explicit, directional, and stable. Changes within one mod
 
 High-level business logic shall not depend directly on low-level implementations.
 
-Instead, high-level modules and low-level implementations should depend on abstractions. This keeps runtime orchestration independent from provider-specific APIs, database drivers, transport frameworks, and concrete infrastructure choices.
+Instead, high-level modules and low-level implementations should depend on abstractions. This keeps pipeline execution, runtime strategies, and focused services independent from provider-specific APIs, database drivers, transport frameworks, and concrete infrastructure choices.
 
 **Design rule:** Core runtime logic depends on interfaces; concrete implementations depend on those interfaces.
 
 ```mermaid
 %%{init: {"theme": "base", "themeVariables": {"primaryColor": "#F7FAFC", "primaryTextColor": "#102A43", "primaryBorderColor": "#4A5568", "lineColor": "#4A5568", "fontFamily": "Inter, Segoe UI, Arial"}}}%%
 flowchart TD
-    engine["Conversation Engine"]:::core
+    engine["Speech Recognition Stage"]:::core
     recognizer["SpeechRecognizer Interface"]:::interface
     whisper["Whisper Provider"]:::provider
     parakeet["Parakeet Provider"]:::provider
@@ -202,7 +206,7 @@ flowchart TD
     classDef provider fill:#FFF4CC,stroke:#D99A00,color:#3A2A00,stroke-width:2px;
 ```
 
-The Conversation Engine should never reference a concrete provider directly.
+Pipeline stages, Runtime Strategies, and Runtime Services should never reference concrete providers directly. Focused business rules should remain in Runtime Services, interchangeable policy should remain in Runtime Strategies, mutable state should remain in Stores and Registries, and provider-specific behavior should remain behind Domain Contracts and Provider Adapters.
 
 ### Principle 5: Interface First Design
 
@@ -324,7 +328,7 @@ The later principles support runtime behavior, operational safety, and long-term
 
 | Principle Group | Reinforces |
 | --- | --- |
-| Single Responsibility, High Cohesion, Low Coupling | Maintainable module boundaries |
+| Single Responsibility, High Cohesion, Low Coupling | Maintainable component boundaries |
 | Dependency Inversion, Interface First Design, Provider Agnostic Architecture | Replaceable providers and extension points |
 | Framework Independence, Explicit Dependencies, Composition Over Inheritance | Testable and adaptable business logic |
 | Streaming First, Fail Gracefully | Responsive and reliable runtime behavior |
@@ -411,7 +415,7 @@ The following review questions should be used when evaluating architecture, modu
 | --- | --- |
 | Single Responsibility | Does this module have one primary reason to change? |
 | High Cohesion | Are related responsibilities kept together behind a clear capability? |
-| Low Coupling | Can this module change without forcing unrelated modules to change? |
+| Low Coupling | Can this component change without forcing unrelated components to change? |
 | Dependency Inversion | Does core logic depend on abstractions instead of concrete infrastructure? |
 | Interface First Design | Is there a clear contract for other modules to depend on? |
 | Provider Agnostic Architecture | Does the design avoid assuming one provider, model, or vendor? |
@@ -481,9 +485,9 @@ These consequences should be treated as design review criteria as VoxCore evolve
 | [Quality Attributes](02-quality-attributes.md) | Defines the measurable qualities these principles preserve. |
 | [Layered Architecture](04-layered-architecture.md) | Will apply these principles to runtime layers and dependency direction. |
 | [Runtime Architecture](05-runtime-architecture.md) | Will apply these principles to session and streaming execution. |
-| [Provider Architecture](07-provider-architecture.md) | Will apply provider agnostic, dependency inversion, and interface first principles. |
-| [Dependency Rules](13-dependency-rules.md) | Will define concrete dependency constraints for modules. |
-| [Extension Points](19-extension-points.md) | Will explain how extensibility is exposed safely. |
+| [Component Architecture](06-component-architecture.md) | Applies ownership, dependency inversion, and interface first principles to runtime components. |
+| [Communication Architecture](07-communication-architecture.md) | Will apply event-driven communication principles. |
+| [Extension Points](10-extension-points.md) | Will explain how extensibility is exposed safely. |
 
 ---
 

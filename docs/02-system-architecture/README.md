@@ -81,28 +81,20 @@ flowchart TD
 
 The architecture documentation covers:
 
-- Overall runtime organization
-- Architectural goals
-- Quality attributes
-- Architectural principles
-- Architectural layers
-- Runtime architecture
-- Component interactions
-- Provider integration
-- Session lifecycle
-- Conversation lifecycle
-- Audio processing pipeline
-- Tool execution
-- Memory management
-- Dependency rules
-- Configuration management
-- Error handling
-- Logging and observability
-- Security boundaries
-- Deployment architecture
-- Extension mechanisms
+- Architectural goals and engineering quality attributes.
+- Architectural principles and design constraints.
+- Layered system organization.
+- Runtime execution model.
+- Runtime component organization.
+- Runtime communication and event flow.
+- Infrastructure architecture.
+- Deployment architecture.
+- Runtime extension mechanisms.
+- Architectural Decision Records (ADRs).
 
-The architecture documentation intentionally excludes implementation-specific details such as class definitions, function signatures, algorithms, and source code. Those topics belong in module design, algorithm design, API specification, or implementation documentation.
+The architecture documentation intentionally excludes implementation-specific details such as source code organization, algorithms, function signatures, class definitions, provider SDK usage, and deployment scripts.
+
+Those topics belong in the Module Design, API Specification, Implementation, and Testing documentation.
 
 ---
 
@@ -124,43 +116,64 @@ These principles influence every architectural decision throughout the project.
 
 ---
 
+## Architecture Viewpoints
+
+The architecture of VoxCore is intentionally described through multiple complementary viewpoints.
+
+Each document answers one architectural question rather than attempting to describe the entire system.
+
+The primary viewpoints are:
+
+| Viewpoint | Question |
+| --- | --- |
+| Layered Architecture | Where do responsibilities belong? |
+| Runtime Architecture | How does the runtime execute? |
+| Component Architecture | Who owns each responsibility? |
+| Communication Architecture | How do components collaborate? |
+| Infrastructure Architecture | How are cross-cutting concerns implemented? |
+| Deployment Architecture | How is the runtime deployed? |
+| Extension Points | How can the runtime evolve safely? |
+
+Together these viewpoints provide a complete architectural description while minimizing duplication between documents.
+
+---
+
 ## Architecture Documentation Map
 
-The architecture documents should be read in dependency order. Each document builds on the decisions and vocabulary introduced before it.
+The architecture documents should be read in dependency order. Each document introduces concepts that are refined by the documents that follow.
 
-```mermaid
-%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#F7FAFC", "primaryTextColor": "#86e278", "primaryBorderColor": "#4A5568", "lineColor": "#4A5568", "fontFamily": "Inter, Segoe UI, Arial"}}}%%
-flowchart TB
-    readme["README<br/>How should these docs be read?"]:::entry
-    goals["01 Architectural Goals<br/>What are we optimizing for?"]:::driver
-    quality["02 Quality Attributes<br/>Which qualities drive the design?"]:::driver
-    principles["03 Architectural Principles<br/>Which rules govern decisions?"]:::principle
-    layers["04 Layered Architecture<br/>How is the runtime divided?"]:::structure
-    runtime["05 Runtime Architecture<br/>How does the runtime execute?"]:::structure
-    components["06 Component Architecture<br/>What are the runtime components?"]:::structure
-    rest["07-19 Topic Documents<br/>How do specific concerns work?"]:::topics
-    adrs["decisions/<br/>Why were major choices made?"]:::adr
-    diagrams["diagrams/<br/>Shared visual assets"]:::diagram
+```text
+README
+|
+|-- 01 Architectural Goals
+|
+|-- 02 Quality Attributes
+|
+|-- 03 Architectural Principles
+|
+|-- 04 Layered Architecture
+|
+|-- 05 Runtime Architecture
+|
+|-- 11 Runtime Execution Pipeline
+|
+|-- 06 Component Architecture
+|
+|-- 07 Communication Architecture
+|
+|-- 08 Infrastructure Architecture
+|
+|-- 09 Deployment Architecture
+|
+`-- 10 Extension Points
 
-    readme --> goals
-    goals --> quality
-    quality --> principles
-    principles --> layers
-    layers --> runtime
-    runtime --> components
-    components --> rest
-    principles -.records decisions in.-> adrs
-    layers -.may reference.-> diagrams
-    runtime -.may reference.-> diagrams
-    components -.may reference.-> diagrams
+Supporting Directories
 
-    classDef entry fill:#E8F4FF,stroke:#2F80ED,color:#102A43,stroke-width:2px;
-    classDef driver fill:#FFF4CC,stroke:#D99A00,color:#3A2A00,stroke-width:2px;
-    classDef principle fill:#F3E8FF,stroke:#8E44AD,color:#2D143A,stroke-width:2px;
-    classDef structure fill:#EAF7EA,stroke:#2E7D32,color:#102A12,stroke-width:2px;
-    classDef topics fill:#E6F7F8,stroke:#00838F,color:#083A40,stroke-width:2px;
-    classDef adr fill:#FFE8E8,stroke:#D64545,color:#3A1111,stroke-width:2px;
-    classDef diagram fill:#EDF2F7,stroke:#4A5568,color:#1A202C,stroke-width:2px;
+diagrams/
+Shared architectural diagrams used across multiple documents.
+
+decisions/
+Architecture Decision Records (ADRs) documenting significant design decisions.
 ```
 
 ---
@@ -171,24 +184,16 @@ flowchart TB
 | --- | --- | --- |
 | 0 | [README](README.md) | How should this architecture documentation be read? |
 | 1 | [Architectural Goals](01-architectural-goals.md) | What are we optimizing for? |
-| 2 | [Quality Attributes](02-quality-attributes.md) | Which quality attributes drive the design? |
-| 3 | [Architectural Principles](03-architectural-principles.md) | Which engineering rules govern every decision? |
-| 4 | [Layered Architecture](04-layered-architecture.md) | How is the runtime divided into layers? |
-| 5 | [Runtime Architecture](05-runtime-architecture.md) | How does the runtime execute? |
-| 6 | [Component Architecture](06-component-architecture.md) | What are the runtime components? |
-| 7 | [Provider Architecture](07-provider-architecture.md) | How are providers integrated? |
-| 8 | [Session Lifecycle](08-session-lifecycle.md) | How does a session live and die? |
-| 9 | [Conversation Lifecycle](09-conversation-lifecycle.md) | How does a conversation flow? |
-| 10 | [Audio Pipeline](10-audio-pipeline.md) | How does audio travel? |
-| 11 | [Tool Execution](11-tool-execution.md) | How are tools executed? |
-| 12 | [Memory Architecture](12-memory-architecture.md) | How is memory managed? |
-| 13 | [Dependency Rules](13-dependency-rules.md) | What dependency rules are enforced? |
-| 14 | [Configuration Architecture](14-configuration-architecture.md) | How is configuration loaded? |
-| 15 | [Error Handling](15-error-handling.md) | How are failures handled? |
-| 16 | [Logging and Observability](16-logging-observability.md) | How are logs and metrics produced? |
-| 17 | [Security Boundaries](17-security-boundaries.md) | What are the trust boundaries? |
-| 18 | [Deployment Architecture](18-deployment-architecture.md) | How is the runtime deployed? |
-| 19 | [Extension Points](19-extension-points.md) | How can the architecture evolve? |
+| 2 | [Quality Attributes](02-quality-attributes.md) | Which engineering qualities matter most? |
+| 3 | [Architectural Principles](03-architectural-principles.md) | Which rules govern every architectural decision? |
+| 4 | [Layered Architecture](04-layered-architecture.md) | Where do responsibilities belong? |
+| 5 | [Runtime Architecture](05-runtime-architecture.md) | How does VoxCore execute? |
+| 6 | [Runtime Execution Pipeline](11-runtime-execution-pipeline.md) | How does a conversational turn execute? |
+| 7 | [Component Architecture](06-component-architecture.md) | Which component owns what? |
+| 8 | [Communication Architecture](07-communication-architecture.md) | How do runtime components communicate? |
+| 9 | [Infrastructure Architecture](08-infrastructure-architecture.md) | How are cross-cutting concerns implemented? |
+| 10 | [Deployment Architecture](09-deployment-architecture.md) | How is VoxCore deployed? |
+| 11 | [Extension Points](10-extension-points.md) | How does VoxCore evolve safely? |
 
 ---
 
@@ -244,15 +249,15 @@ These rules keep architecture understandable as the project grows.
 
 | Document | Responsibility |
 | --- | --- |
-| [Project README](../../README.md) | Introduces VoxCore and helps visitors decide whether to explore the project. |
-| [Documentation Index](../00-documentation-index.md) | Explains which project document answers which question. |
-| [Software Requirements Specification](../01-software-requirements-specification.md) | Defines what VoxCore must do. |
-| System Architecture | Defines how VoxCore is organized to satisfy requirements. |
-| Module Design | Defines internal code boundaries and module responsibilities. |
-| API Specification | Defines public integration contracts. |
-| Implementation | Provides the actual runtime code. |
-| Testing | Verifies that implementation satisfies requirements and architecture. |
-| [Roadmap](../../ROADMAP.md) | Describes product direction and planned milestones. |
+| Project README | Introduces VoxCore and explains the project's purpose. |
+| Documentation Index | Helps contributors navigate the documentation. |
+| Software Requirements Specification | Defines what the system must accomplish. |
+| System Architecture | Defines how the system is organized. |
+| Module Design | Defines the internal structure of each runtime module. |
+| API Specification | Defines public interfaces exposed by VoxCore. |
+| Implementation | Contains the production source code. |
+| Testing | Verifies that the implementation satisfies the architecture and requirements. |
+| Roadmap | Describes planned architectural and product evolution. |
 
 ---
 
@@ -276,6 +281,22 @@ Readers unfamiliar with the project should begin with the [Project README](../..
 The architecture is expected to evolve as VoxCore matures.
 
 Whenever significant architectural decisions are introduced, modified, or deprecated, the relevant architecture document and any related ADR should be updated. Architectural changes should be driven by documented requirements, measurable quality improvements, or validated engineering needs rather than implementation convenience.
+
+---
+
+## Architecture Governance
+
+The architecture described in this directory should be treated as the authoritative design reference for VoxCore.
+
+Any architectural change should:
+
+1. Begin with an Architecture Decision Record (ADR) when appropriate.
+2. Remain consistent with the Software Requirements Specification.
+3. Preserve the Architectural Principles.
+4. Maintain the Runtime Architecture ownership model.
+5. Update all affected architecture documents before implementation begins.
+
+Implementation should follow architecture, not redefine it.
 
 ---
 

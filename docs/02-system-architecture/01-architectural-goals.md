@@ -60,6 +60,18 @@ For example:
 
 Every architectural goal should be traceable back to one or more requirements in the SRS.
 
+This document influences:
+
+- Quality Attributes
+- Architectural Principles
+- Layered Architecture
+- Runtime Architecture
+- Component Architecture
+- Communication Architecture
+- Infrastructure Architecture
+- Deployment Architecture
+- Extension Points
+
 ```mermaid
 %%{init: {"theme": "base", "themeVariables": {"primaryColor": "#E8F4FF", "primaryTextColor": "#102A43", "primaryBorderColor": "#2F80ED", "lineColor": "#52616B", "fontFamily": "Inter, Segoe UI, Arial"}}}%%
 flowchart TD
@@ -103,11 +115,13 @@ Each goal defines a desired property of the system architecture. Later architect
 
 ### Goal 1: Modularity
 
-The runtime shall be composed of independent modules with clearly defined responsibilities.
+The runtime should be divided into independently maintainable components that follow explicit ownership boundaries.
 
-Each module should encapsulate a single major capability while exposing explicit public interfaces. Changes within one module should have minimal impact on unrelated modules.
+Each runtime component should own one responsibility, one category of state, and one public interface.
 
-**Success measure:** A major capability, such as provider integration, tool execution, memory, or session management, can evolve without requiring unrelated runtime modules to change.
+Each component should encapsulate a single major capability while exposing explicit public interfaces. Changes within one component should have minimal impact on unrelated components.
+
+**Success measure:** A major capability, such as provider integration, tool execution, memory, or session management, can evolve without requiring unrelated runtime components to change.
 
 **Primary SRS traceability:** NFR-007, NFR-010, NFR-011, FR-030 to FR-032
 
@@ -115,9 +129,13 @@ Each module should encapsulate a single major capability while exposing explicit
 
 The runtime shall remain independent of specific AI providers.
 
+Provider independence is achieved through Domain Contracts and Provider Adapters rather than direct provider integration.
+
+The Runtime should remain unaware of concrete provider implementations.
+
 Speech recognition, language models, speech synthesis, embedding models, memory providers, and related external services should be replaceable without modifying the runtime's core business logic.
 
-**Success measure:** An STT, LLM, TTS, memory, or embedding provider implementation can be replaced through a stable provider interface without changing client application behavior or unrelated runtime components.
+**Success measure:** An STT, LLM, TTS, memory, or embedding provider implementation can be replaced through stable Domain Contracts and Provider Adapters without changing client application behavior or unrelated runtime components.
 
 **Primary SRS traceability:** FR-008, FR-014, FR-015, FR-022, FR-030, EI-006 to EI-008, NFR-010
 
@@ -145,9 +163,20 @@ Scalability should primarily be achieved through modular decomposition, session 
 
 Future capabilities should integrate through extension points rather than modification of existing components.
 
-Adding new providers, tools, memory backends, application integrations, or plugins should require minimal changes to existing modules.
+Future versions should support:
 
-**Success measure:** A new tool type, provider implementation, or application-specific capability can be added through documented extension interfaces without changing the Conversation Engine or unrelated runtime internals.
+- New AI providers
+- New SDKs
+- New transport protocols
+- New runtime services
+- New provider adapters
+- New plugin modules
+- New communication patterns
+- Future deployment models
+
+Adding new providers, tools, memory backends, application integrations, runtime services, adapters, or plugins should require minimal changes to existing components.
+
+**Success measure:** A new tool type, provider implementation, runtime service, adapter, plugin module, or application-specific capability can be added through documented extension interfaces without changing unrelated runtime internals.
 
 **Primary SRS traceability:** FR-016 to FR-018, FR-030 to FR-032, EI-009, EI-010, NFR-011, NFR-020
 
@@ -165,15 +194,19 @@ Future contributors should be able to understand the runtime without extensive o
 
 Business logic should remain independently testable from infrastructure concerns.
 
+Business rules should remain isolated inside focused Runtime Services, while interchangeable policies live in Runtime Strategies and mutable state lives in Stores and Registries. Pipeline stages, services, strategies, and stores should be testable independently without requiring external providers, networking infrastructure, or full runtime initialization.
+
 Every major component should support isolated testing, and core behavior should be verifiable without requiring live external AI providers.
 
-**Success measure:** Session management, conversation flow, tool execution, memory behavior, and provider orchestration can be tested with fake or mocked providers.
+**Success measure:** Session management, pipeline execution, conversation rules, tool execution, memory behavior, provider selection strategies, and store-backed state can be tested with fake or mocked providers.
 
 **Primary SRS traceability:** NFR-015, NFR-016, NFR-003, NFR-017
 
 ### Goal 8: Performance
 
 The runtime should minimize end-to-end conversational latency while maintaining architectural simplicity.
+
+The runtime should process conversational workflows through the Runtime Execution Pipeline and Runtime Scheduler, minimizing unnecessary blocking operations while supporting continuous streaming throughout the conversation lifecycle.
 
 Performance optimizations should not compromise maintainability unless the benefit is measurable and relevant to interactive voice behavior.
 
@@ -194,6 +227,10 @@ Operational visibility should be designed into the architecture rather than adde
 ### Goal 10: Developer Experience
 
 Developers integrating VoxCore should experience consistent APIs, clear documentation, predictable behavior, and minimal configuration complexity.
+
+Architecture should be discoverable through documentation.
+
+Developers should be able to identify component ownership, dependency direction, and runtime execution flow without inspecting implementation code.
 
 The architecture should optimize both runtime performance and developer productivity.
 
@@ -241,6 +278,29 @@ The relationships in this diagram do not imply that one goal is less important t
 
 ---
 
+## Goal Prioritization
+
+Not every architectural goal has equal priority when trade-offs are required.
+
+For VoxCore, the recommended priority order is:
+
+| Priority | Goal |
+| --- | --- |
+| Critical | Maintainability |
+| Critical | Extensibility |
+| Critical | Runtime Simplicity |
+| Critical | Provider Independence |
+| High | Performance |
+| High | Reliability |
+| High | Testability |
+| High | Developer Experience |
+| Medium | Observability |
+| Medium | Scalability |
+
+Runtime simplicity is critical because VoxCore now depends on explicit runtime ownership, pipeline execution, RuntimeContext, scheduler behavior, focused Runtime Services, Runtime Strategies, Stores, Registries, Domain Contracts, Provider Adapters, and infrastructure boundaries. These concepts should make the runtime easier to reason about, not harder.
+
+---
+
 ## Trade-Offs
 
 Every architectural goal introduces trade-offs.
@@ -270,18 +330,35 @@ The following table summarizes how each goal should be assessed during design re
 
 | Goal | Review Question |
 | --- | --- |
-| Modularity | Can this change be made within the responsible module without modifying unrelated modules? |
-| Provider Independence | Can the affected provider be replaced without changing core runtime business logic? |
+| Modularity | Can this change be made within the responsible component without modifying unrelated components? |
+| Provider Independence | Can the affected provider be replaced through Domain Contracts and Provider Adapters without changing core runtime business logic? |
 | Streaming First | Does the design support continuous audio, transcript, event, and response flow where real-time behavior matters? |
 | Scalability | Does the design avoid assumptions that prevent concurrent sessions or future horizontal scaling? |
 | Extensibility | Can future providers, tools, plugins, or integrations use an explicit extension point? |
-| Maintainability | Are responsibilities, dependencies, and behavior understandable from the documentation and module boundaries? |
+| Maintainability | Are responsibilities, dependencies, and behavior understandable from the documentation and component boundaries? |
 | Testability | Can the behavior be tested without live external providers or fragile infrastructure setup? |
 | Performance | Can latency and resource impact be measured before introducing complexity? |
 | Observability | Can important runtime behavior be traced safely through structured logs, metrics, or events? |
 | Developer Experience | Will an integrating developer encounter predictable APIs, useful errors, and clear documentation? |
 
 Architecture changes should be reconsidered when they cannot satisfy the relevant review questions.
+
+---
+
+## Traceability
+
+The following table maps architectural goals to the architecture documents that primarily support them.
+
+| Goal | Architectural Documents |
+| --- | --- |
+| Maintainability | Layered Architecture, Component Architecture |
+| Extensibility | Runtime Architecture, Extension Points |
+| Provider Independence | Component Architecture |
+| Performance | Runtime Architecture, Communication Architecture |
+| Reliability | Runtime Architecture, Infrastructure Architecture |
+| Testability | Component Architecture |
+| Observability | Infrastructure Architecture |
+| Developer Experience | Architectural Principles |
 
 ---
 
@@ -312,15 +389,33 @@ The goals also protect the project from overfitting to early implementation choi
 The architectural goals in this document create the following expectations for future architecture work:
 
 - Later architecture documents must explain how their decisions support these goals.
-- Provider-specific logic should remain behind provider interfaces.
+- Provider-specific logic should remain behind Domain Contracts and Provider Adapters.
 - Streaming behavior should be treated as a core runtime concern.
-- Runtime modules should have clear ownership and explicit dependencies.
+- Runtime components should have clear ownership and explicit dependencies.
 - Test design should be considered during architecture design, not after implementation.
 - Observability should be part of the runtime model from the beginning.
 - Performance improvements should be guided by measurement.
 - Developer-facing behavior should remain documented, predictable, and consistent.
 
 These consequences should be treated as architecture review criteria as VoxCore evolves.
+
+---
+
+## Architectural Goal Validation
+
+The architectural goals defined in this document serve as evaluation criteria for future architectural decisions.
+
+Whenever a significant architectural change is proposed, it should be evaluated against the following questions:
+
+- Does the change improve maintainability?
+- Does it preserve provider independence?
+- Does it respect ownership boundaries?
+- Does it improve or preserve runtime simplicity?
+- Does it reduce unnecessary coupling?
+- Does it support future extensibility?
+- Does it remain consistent with the Runtime Architecture?
+
+If a proposed change negatively affects one or more critical goals, it should be justified through an Architecture Decision Record before implementation.
 
 ---
 
@@ -332,9 +427,10 @@ These consequences should be treated as architecture review criteria as VoxCore 
 | [Software Requirements Specification](../01-software-requirements-specification.md) | Defines the requirements that these architectural goals translate into engineering objectives. |
 | [Quality Attributes](02-quality-attributes.md) | Defines the quality attributes that make these goals measurable in more detail. |
 | [Architectural Principles](03-architectural-principles.md) | Defines the rules and design principles used to satisfy these goals. |
-| [Provider Architecture](07-provider-architecture.md) | Will explain how provider independence is implemented architecturally. |
-| [Logging and Observability](16-logging-observability.md) | Will explain how observability is designed into the runtime. |
-| [Extension Points](19-extension-points.md) | Will explain how extensibility is exposed safely. |
+| [Component Architecture](06-component-architecture.md) | Defines runtime ownership boundaries that support these goals. |
+| [Communication Architecture](07-communication-architecture.md) | Will explain runtime communication and event flow. |
+| [Infrastructure Architecture](08-infrastructure-architecture.md) | Will explain cross-cutting infrastructure concerns. |
+| [Extension Points](10-extension-points.md) | Will explain how extensibility is exposed safely. |
 
 ---
 

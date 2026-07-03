@@ -67,8 +67,8 @@ This document directly influences:
 | --- | --- |
 | [Runtime Architecture](05-runtime-architecture.md) | Will explain how runtime execution operates within these layer boundaries. |
 | [Component Architecture](06-component-architecture.md) | Will assign concrete runtime components to these layers. |
-| [Provider Architecture](07-provider-architecture.md) | Will explain how provider adapters implement domain contracts without leaking provider details into runtime logic. |
-| [Dependency Rules](13-dependency-rules.md) | Will formalize dependency constraints and review rules. |
+| [Communication Architecture](07-communication-architecture.md) | Will explain event flow and runtime communication across these layers. |
+| [Infrastructure Architecture](08-infrastructure-architecture.md) | Will explain cross-cutting infrastructure concerns within these boundaries. |
 
 ---
 
@@ -114,12 +114,12 @@ These objectives apply to every layer.
 The VoxCore runtime is divided into five internal logical layers, with client applications outside the runtime boundary.
 
 ```mermaid
-%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#F7FAFC", "primaryTextColor": "#4de678", "primaryBorderColor": "#4A5568", "lineColor": "#49d6d4", "fontFamily": "Inter, Segoe UI, Arial"}}}%%
+%%{init: {"theme": "base", "themeVariables": {"primaryColor": "#F7FAFC", "primaryTextColor": "#102A43", "primaryBorderColor": "#4A5568", "lineColor": "#4A5568", "fontFamily": "Inter, Segoe UI, Arial"}}}%%
 flowchart TD
     clients["Client Applications<br/>Web, mobile, desktop, backend"]:::external
     app["Application Interface Layer<br/>REST API, WebSocket, SDK adapters"]:::interface
-    runtime["Runtime Layer<br/>Sessions, conversations, audio flow, tools"]:::runtime
-    domain["Domain Layer<br/>Business rules, interfaces, contracts"]:::domain
+    runtime["Runtime Layer<br/>Runtime Kernel, Runtime Scheduler<br/>Runtime Execution Pipeline, RuntimeContext<br/>Runtime Event Bus, Managers, Strategies<br/>Stores and Registries"]:::runtime
+    domain["Domain Layer<br/>Focused rules, interfaces, contracts"]:::domain
     providers["Provider Integration Layer<br/>STT, LLM, TTS, memory adapters"]:::provider
     infrastructure["Infrastructure Layer<br/>Configuration, logging, storage, metrics"]:::infrastructure
 
@@ -144,6 +144,18 @@ flowchart TD
 This diagram represents logical architecture rather than deployment architecture.
 
 Layers are not required to become separate processes, services, packages, or repositories. Physical boundaries may evolve later, but logical responsibilities should remain clear from the beginning.
+
+---
+
+## Runtime Position
+
+Although the Runtime Layer contains the execution engine of VoxCore, the Layered Architecture intentionally does not describe how runtime execution occurs.
+
+Runtime execution is documented separately in the [Runtime Architecture](05-runtime-architecture.md) and [Runtime Execution Pipeline](11-runtime-execution-pipeline.md).
+
+This document defines where the Runtime Layer belongs in the static structure of VoxCore.
+
+The Runtime Architecture defines how the Runtime Layer behaves during initialization, pipeline execution, scheduling, event routing, session execution, provider interaction, tool execution, memory coordination, streaming, cancellation, and shutdown.
 
 ---
 
@@ -184,29 +196,44 @@ This layer contains no business logic.
 
 ## Layer 2: Runtime Layer
 
-The Runtime Layer coordinates runtime execution.
+The Runtime Layer represents the execution engine of VoxCore.
 
-This layer orchestrates interactions between sessions, conversations, audio streams, tools, memory, domain policies, provider interfaces, and runtime events.
+It owns the Runtime Kernel, Runtime Scheduler, Runtime Execution Pipeline, RuntimeContext model, Runtime Event Bus, Runtime Managers, Runtime Strategies, Stores, and Registries.
 
-The Runtime Layer represents the executable behavior of VoxCore.
+Every conversational session executes inside the Runtime Layer through a pipeline-driven execution model supported by meaningful runtime events.
+
+This layer contains runtime coordination behavior, not provider-specific implementation details or application-specific business logic.
 
 **Examples:**
 
-- Session lifecycle orchestration
-- Conversation flow orchestration
-- Audio pipeline coordination
-- Tool execution coordination
-- Memory coordination
-- Runtime event routing
+- Runtime Kernel
+- Runtime Scheduler
+- Runtime Execution Pipeline
+- RuntimeContext
+- Runtime Event Bus
+- Runtime Managers
+- Runtime Strategies
+- Stores and Registries
+- Session Manager
+- Conversation Manager
+- Audio Manager
+- Memory Manager
+- Provider Manager
+- Plugin Manager
+- Tool Manager
 
 **Responsibilities:**
 
-- Coordinate workflows
 - Manage runtime lifecycle
-- Manage active session state
+- Schedule runtime work
+- Execute conversational turns through the Runtime Execution Pipeline
+- Route runtime events
+- Coordinate runtime managers
+- Manage session lifecycle
+- Maintain session isolation
+- Use Stores and Registries for active runtime state
 - Invoke providers through domain-defined interfaces
-- Route events
-- Handle streaming flow
+- Coordinate streaming flow through runtime events
 - Localize recoverable runtime failures
 
 **Must not:**
@@ -409,18 +436,24 @@ Normal execution follows a controlled flow from clients into the runtime and bac
 sequenceDiagram
     participant Client
     participant Interface as Application Interface
-    participant Runtime
-    participant Domain
+    participant Kernel as Runtime Kernel
+    participant Bus as Runtime Event Bus
+    participant Managers as Runtime Managers
+    participant Domain as Domain Contracts
     participant Provider as Provider Integration
     participant Infra as Infrastructure
 
     Client->>Interface: Send request or stream event
-    Interface->>Runtime: Submit runtime command or stream frame
-    Runtime->>Domain: Apply contracts, policies, and interfaces
-    Runtime->>Provider: Invoke through domain interface
+    Interface->>Kernel: Submit runtime command or stream frame
+    Kernel->>Bus: Publish or route runtime event
+    Bus->>Managers: Dispatch event to subscribed managers
+    Managers->>Domain: Apply contracts, policies, and interfaces
+    Managers->>Provider: Invoke through domain interface
     Provider->>Infra: Use configuration, logging, metrics, or storage
-    Provider-->>Runtime: Return normalized provider result
-    Runtime-->>Interface: Emit response, event, or error
+    Provider-->>Managers: Return normalized provider result
+    Managers-->>Bus: Publish response, event, or error
+    Bus-->>Kernel: Route runtime result
+    Kernel-->>Interface: Emit response, event, or error
     Interface-->>Client: Return API response or stream event
 ```
 
@@ -439,10 +472,15 @@ Every future runtime module should be assigned to exactly one primary layer.
 | REST endpoint handlers | Application Interface |
 | WebSocket connection adapters | Application Interface |
 | SDK transport adapters | Application Interface |
-| Session lifecycle coordination | Runtime |
-| Conversation orchestration | Runtime |
-| Audio flow coordination | Runtime |
-| Tool execution coordination | Runtime |
+| Runtime Kernel | Runtime |
+| Runtime Event Bus | Runtime |
+| Session Manager | Runtime |
+| Conversation Manager | Runtime |
+| Audio Manager | Runtime |
+| Memory Manager | Runtime |
+| Provider Manager | Runtime |
+| Plugin Manager | Runtime |
+| Tool Manager | Runtime |
 | Domain models and contracts | Domain |
 | Provider interfaces | Domain |
 | Runtime policies and invariants | Domain |
@@ -591,8 +629,8 @@ These consequences should be treated as review criteria as VoxCore evolves.
 | [Architectural Principles](03-architectural-principles.md) | Defines the principles enforced by layered architecture. |
 | [Runtime Architecture](05-runtime-architecture.md) | Will explain runtime execution within these layer boundaries. |
 | [Component Architecture](06-component-architecture.md) | Will assign concrete components to layers. |
-| [Provider Architecture](07-provider-architecture.md) | Will describe provider adapters and provider contracts in detail. |
-| [Dependency Rules](13-dependency-rules.md) | Will define detailed dependency constraints and enforcement guidance. |
+| [Communication Architecture](07-communication-architecture.md) | Will describe event flow and component collaboration in detail. |
+| [Infrastructure Architecture](08-infrastructure-architecture.md) | Will describe infrastructure services and cross-cutting concerns in detail. |
 
 ---
 

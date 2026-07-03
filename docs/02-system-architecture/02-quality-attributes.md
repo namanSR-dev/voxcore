@@ -4,7 +4,7 @@ This document defines the quality attributes that drive the architecture of VoxC
 
 Unlike functional requirements, which describe what the system must do, quality attributes describe how well the system must perform those functions.
 
-Quality attributes influence architectural decisions, technology selection, module boundaries, communication patterns, dependency management, and implementation strategies.
+Quality attributes influence architectural decisions, technology selection, component boundaries, communication patterns, dependency management, and implementation strategies.
 
 Every architectural decision within VoxCore should improve one or more quality attributes while balancing any associated trade-offs.
 
@@ -19,6 +19,17 @@ The purpose of this document is to answer one architecture question:
 Quality attributes translate the product and engineering requirements in the [Software Requirements Specification](../01-software-requirements-specification.md) into measurable architectural concerns.
 
 These attributes act as a bridge between requirements and architecture. They help reviewers evaluate whether a design is merely functional or whether it is maintainable, extensible, responsive, reliable, testable, observable, scalable, and pleasant for developers to use.
+
+This document directly influences:
+
+- Architectural Principles
+- Layered Architecture
+- Runtime Architecture
+- Component Architecture
+- Communication Architecture
+- Infrastructure Architecture
+- Deployment Architecture
+- Module Design
 
 ---
 
@@ -104,14 +115,15 @@ The most important design drivers are:
 | Long-term evolution | The project must remain understandable as providers, tools, memory, APIs, and plugins grow. |
 | Open-source contribution | New contributors should be able to understand responsibilities, interfaces, and expected behavior. |
 | Test confidence | Core runtime behavior must be verifiable without live external AI providers. |
+| Runtime simplicity | Runtime ownership, event flow, services, contracts, adapters, and infrastructure boundaries must remain understandable. |
 
-These drivers shape the eight primary quality attributes defined below.
+These drivers shape the nine primary quality attributes defined below.
 
 ---
 
 ## Primary Quality Attributes
 
-VoxCore defines exactly eight primary quality attributes.
+VoxCore defines exactly nine primary quality attributes.
 
 These attributes should remain stable throughout the lifetime of the project, even when implementation technologies change.
 
@@ -123,14 +135,16 @@ VoxCore is intended to evolve over many versions, providers, tools, deployment s
 
 **Architectural impact:**
 
-- Modular components
+- Modular runtime components
 - Explicit interfaces
 - Clear responsibilities
 - Minimal coupling
 - Consistent documentation
 - Predictable dependency direction
 
-**Success criterion:** A developer can modify one module without requiring changes to unrelated modules.
+**Success criterion:** A developer can modify one runtime component without requiring changes to unrelated components.
+
+Changes should remain localized through explicit ownership boundaries, interface-based communication, and event-driven collaboration.
 
 ### 2. Extensibility
 
@@ -140,13 +154,19 @@ Future versions may introduce new STT providers, LLM providers, TTS providers, m
 
 **Architectural impact:**
 
-- Provider abstractions
+- Plugin architecture
+- Provider abstraction
+- Runtime Execution Pipeline stages
+- Runtime Strategies
+- Runtime Event Bus
+- Domain Contracts
+- Provider Adapters
 - Tool registration boundaries
 - Extension interfaces
 - Dependency inversion
 - Stable contracts for replaceable behavior
 
-**Success criterion:** New providers, tools, or memory implementations can integrate without changing existing runtime orchestration logic.
+**Success criterion:** New providers, tools, memory implementations, strategies, or pipeline stages can integrate without changing unrelated runtime execution logic.
 
 ### 3. Performance
 
@@ -157,9 +177,13 @@ Voice conversations are highly sensitive to delay. Users perceive even short pau
 **Architectural impact:**
 
 - Streaming-first execution
-- Async processing where appropriate
-- Efficient pipeline boundaries
-- Lightweight abstractions
+- Runtime Scheduler ownership
+- Pipeline stages for latency-sensitive work
+- Asynchronous event processing for meaningful transitions
+- Lightweight Runtime Managers
+- Focused Runtime Services
+- Efficient Provider Adapters
+- Minimal runtime coordination overhead
 - Latency measurement points
 - Avoidance of unnecessary blocking operations
 
@@ -173,10 +197,14 @@ Applications using VoxCore may eventually serve multiple concurrent conversation
 
 **Architectural impact:**
 
+- Independent runtime components
 - Session isolation
-- Independent modules
-- Stateless APIs where appropriate
-- Clear ownership of stateful resources
+- Stateless Runtime Services where appropriate
+- Runtime Scheduler boundaries
+- Pipeline execution
+- Event-driven transitions
+- Independent Provider Adapters
+- Store and Registry ownership of stateful resources
 - Horizontal scaling readiness
 - Avoidance of process-wide conversational state
 
@@ -190,9 +218,14 @@ External providers, network connections, client streams, tool calls, and audio p
 
 **Architectural impact:**
 
-- Error boundaries
 - Session isolation
+- Error boundaries
+- Runtime lifecycle management
+- Runtime Scheduler deadlines, timeouts, retries, and cancellation
+- Deterministic transition events
 - Graceful degradation
+- Recoverable provider failures
+- Explicit ownership of runtime state
 - Timeout handling
 - Retry strategies where safe
 - Structured failure events
@@ -207,10 +240,15 @@ Testing reduces regressions and increases confidence in architectural changes. C
 
 **Architectural impact:**
 
-- Interface-driven design
+- Interface-driven architecture
 - Dependency injection
-- Isolated business logic
-- Mockable providers
+- Pipeline stages separated from managers and services
+- Runtime Services kept focused
+- Runtime Strategies isolated from services
+- Stores and Registries isolated from managers
+- Mockable Provider Adapters
+- Framework-independent business logic
+- Independent Runtime Managers
 - Fake runtime dependencies
 - Deterministic behavior where practical
 
@@ -226,14 +264,41 @@ Debugging distributed conversational systems is difficult without visibility int
 
 - Structured logging
 - Metrics
-- Trace identifiers
+- Distributed tracing
 - Runtime event recording
+- RuntimeContext trace metadata
+- Lifecycle monitoring
+- Performance telemetry
+- Correlation identifiers
 - Safe error metadata
 - Sensitive value redaction
 
 **Success criterion:** Major runtime events can be traced across the system without exposing sensitive data.
 
-### 8. Developer Experience
+### 8. Runtime Simplicity
+
+The runtime should remain conceptually simple despite supporting complex conversational workflows.
+
+Complexity should be hidden inside well-defined runtime components rather than distributed throughout the system.
+
+Keeping turn execution in the pipeline, policies in strategies, state in stores, and boundary coordination in managers enables future contributors to understand the runtime quickly.
+
+**Architectural impact:**
+
+- Runtime Kernel owns lifecycle
+- Runtime Scheduler owns scheduling
+- Runtime Execution Pipeline owns turn execution
+- RuntimeContext carries execution metadata
+- Runtime Managers coordinate boundaries
+- Runtime Services implement focused business rules
+- Runtime Strategies own interchangeable policies
+- Stores and Registries own mutable state
+- Domain Contracts define interfaces
+- Provider Adapters isolate external dependencies
+
+**Success criterion:** Developers should understand the execution model by reading the Runtime Architecture without needing to inspect implementation code.
+
+### 9. Developer Experience
 
 Developers integrating VoxCore should encounter minimal friction.
 
@@ -242,9 +307,12 @@ Good architecture benefits both runtime users and contributors. APIs, SDKs, conf
 **Architectural impact:**
 
 - Consistent APIs
-- Predictable behavior
-- Clear documentation
+- Predictable Runtime Model
+- Clear ownership boundaries
+- Architecture-first documentation
 - Simple configuration
+- Provider independence
+- Well-defined extension points
 - Useful error messages
 - Low-friction local development
 
@@ -264,6 +332,7 @@ flowchart TD
     testability["Testability"]:::high
     reliability["Reliability"]:::high
     developerExperience["Developer Experience"]:::high
+    runtimeSimplicity["Runtime Simplicity"]:::critical
 
     performance["Performance"]:::critical
     streaming["Streaming Behavior"]:::bridge
@@ -274,6 +343,8 @@ flowchart TD
     maintainability --> extensibility
     maintainability --> testability
     maintainability --> reliability
+    maintainability --> runtimeSimplicity
+    runtimeSimplicity --> developerExperience
     extensibility --> developerExperience
     testability --> developerExperience
     reliability --> developerExperience
@@ -291,11 +362,13 @@ flowchart TD
     classDef runtime fill:#FFE8E8,stroke:#D64545,color:#3A1111,stroke-width:2px;
 ```
 
-Maintainability is the foundation for most long-term qualities. Extensibility, testability, reliability, and developer experience are easier to preserve when responsibilities and dependencies remain clear.
+Maintainability is the foundation for most long-term qualities. Runtime simplicity, extensibility, testability, reliability, and developer experience are easier to preserve when responsibilities and dependencies remain clear.
 
 Performance is closely tied to streaming behavior. Streaming also supports future scalability because it encourages explicit session, lifecycle, and backpressure boundaries.
 
 Observability reinforces reliability and developer experience by making runtime behavior easier to understand when something goes wrong.
+
+Provider independence is tracked as a high-priority quality because the Runtime Platform depends on Domain Contracts and Provider Adapters to keep concrete providers outside core runtime logic.
 
 ---
 
@@ -308,11 +381,13 @@ For VoxCore, the recommended priority order is:
 | Priority | Attribute |
 | --- | --- |
 | Critical | Maintainability |
+| Critical | Runtime Simplicity |
 | Critical | Extensibility |
 | Critical | Performance |
 | High | Reliability |
 | High | Testability |
 | High | Developer Experience |
+| High | Provider Independence |
 | Medium | Observability |
 | Medium | Scalability |
 
@@ -335,6 +410,7 @@ Every quality attribute introduces trade-offs.
 | Reliability | Keeps failures localized and predictable. | Requires careful error boundaries, timeouts, and recovery paths. |
 | Testability | Increases confidence in refactoring and provider replacement. | Requires interfaces, fakes, and deterministic test harnesses. |
 | Observability | Makes runtime behavior diagnosable. | Adds logs, metrics, and trace metadata that must avoid sensitive data exposure. |
+| Runtime Simplicity | Keeps the runtime understandable despite complex conversational workflows. | Requires discipline to keep managers thin and business logic isolated in services. |
 | Developer Experience | Improves adoption and contributor productivity. | Requires sustained attention to naming, documentation, defaults, and error design. |
 
 Architectural decisions should balance these trade-offs according to the priority order above and the requirements being satisfied.
@@ -354,8 +430,8 @@ Each scenario describes a source, stimulus, environment, response, and response 
 | Source | Contributor |
 | Stimulus | Modifies session lifecycle behavior |
 | Environment | Existing runtime with provider and tool integrations |
-| Response | The change is implemented in the session lifecycle boundary without modifying unrelated provider, tool, memory, or SDK modules. |
-| Response measure | No changes are required outside the responsible module and its documented integration points. |
+| Response | The change is implemented within the responsible component boundary without modifying unrelated provider, tool, memory, or SDK components. |
+| Response measure | No changes are required outside the responsible component and its documented integration points. |
 
 ### Extensibility Scenario
 
@@ -363,8 +439,8 @@ Each scenario describes a source, stimulus, environment, response, and response 
 | --- | --- |
 | Source | Provider maintainer |
 | Stimulus | Adds a new TTS provider |
-| Environment | Existing runtime with an established provider abstraction |
-| Response | The provider is implemented through the provider interface and registered through the supported extension mechanism. |
+| Environment | Existing runtime with established Domain Contracts and Provider Adapters |
+| Response | The provider is implemented through the relevant Domain Contract and Provider Adapter and registered through the supported extension mechanism. |
 | Response measure | Existing runtime orchestration logic and client API behavior do not change. |
 
 ### Performance Scenario
@@ -404,7 +480,7 @@ Each scenario describes a source, stimulus, environment, response, and response 
 | Source | Developer |
 | Stimulus | Verifies conversation flow behavior |
 | Environment | Local test environment without live AI provider credentials |
-| Response | The developer supplies fake STT, LLM, TTS, memory, and tool dependencies to test the flow deterministically. |
+| Response | The developer supplies fake Domain Contract implementations, Provider Adapters, memory stores, and tool dependencies to test the flow deterministically. |
 | Response measure | Core conversation behavior is testable without network calls to external providers. |
 
 ### Observability Scenario
@@ -416,6 +492,16 @@ Each scenario describes a source, stimulus, environment, response, and response 
 | Environment | Runtime producing structured logs, metrics, and trace identifiers |
 | Response | The maintainer can follow session creation, audio ingestion, transcription, model generation, synthesis, stream output, and error events. |
 | Response measure | The delay can be localized to a runtime stage or provider boundary without exposing secrets or sensitive user data. |
+
+### Runtime Simplicity Scenario
+
+| Element | Description |
+| --- | --- |
+| Source | Runtime contributor |
+| Stimulus | Introduces a new conversational capability |
+| Environment | Existing production runtime |
+| Response | The capability is implemented by introducing a new Runtime Service or Provider Adapter while leaving the Runtime Kernel, Runtime Managers, and existing components unchanged. |
+| Response measure | The implementation requires no architectural restructuring and preserves existing ownership boundaries. |
 
 ### Developer Experience Scenario
 
@@ -431,31 +517,20 @@ Each scenario describes a source, stimulus, environment, response, and response 
 
 ## Traceability To SRS Requirements
 
-The following table maps SRS requirements to the quality attributes they influence.
+The following table maps SRS requirement areas to primary quality attributes.
 
-| SRS Requirement Area | Related Requirements | Primary Quality Attributes |
-| --- | --- | --- |
-| Session management | FR-001 to FR-003 | Reliability, Scalability, Testability |
-| Audio processing | FR-004 to FR-006 | Performance, Reliability, Observability |
-| Speech recognition | FR-007 to FR-009, EI-006 | Extensibility, Performance, Testability |
-| Conversation management | FR-010 to FR-012 | Maintainability, Reliability, Testability |
-| Language model integration | FR-013 to FR-015, EI-007 | Extensibility, Reliability, Testability |
-| Tool execution | FR-016 to FR-018, EI-009, EI-010 | Extensibility, Reliability, Observability |
-| Memory | FR-019 to FR-020 | Reliability, Scalability, Testability |
-| Speech synthesis | FR-021 to FR-023, EI-008 | Extensibility, Performance, Testability |
-| APIs | FR-024 to FR-026, EI-001 to EI-003 | Developer Experience, Observability, Reliability |
-| SDKs | FR-027 to FR-029, EI-004, EI-005 | Developer Experience, Maintainability |
-| Extensibility | FR-030 to FR-032 | Extensibility, Maintainability, Developer Experience |
-| Performance | NFR-001, NFR-002 | Performance, Observability |
-| Reliability | NFR-003, NFR-004 | Reliability, Testability |
-| Scalability | NFR-005, NFR-006 | Scalability, Maintainability |
-| Maintainability | NFR-007 to NFR-009 | Maintainability, Developer Experience |
-| Modularity and extensibility | NFR-010, NFR-011 | Extensibility, Maintainability |
-| Portability | NFR-012 | Developer Experience, Testability |
-| Observability | NFR-013, NFR-014 | Observability, Reliability |
-| Testability | NFR-015, NFR-016 | Testability, Maintainability |
-| Security and privacy | NFR-017, NFR-018 | Reliability, Observability |
-| Documentation | NFR-019, NFR-020 | Developer Experience, Maintainability |
+| SRS Requirement | Primary Quality Attribute |
+| --- | --- |
+| Maintainability | Maintainability |
+| Extensibility | Extensibility |
+| Provider Independence | Extensibility |
+| Performance | Performance |
+| Reliability | Reliability |
+| Testability | Testability |
+| Runtime Architecture | Runtime Simplicity |
+| Observability | Observability |
+| Scalability | Scalability |
+| Developer Experience | Developer Experience |
 
 Traceability should be revisited when SRS requirements change.
 
@@ -467,13 +542,14 @@ The following review questions should be used during architecture review, implem
 
 | Attribute | Review Question |
 | --- | --- |
-| Maintainability | Can the change be understood and modified within clear module boundaries? |
+| Maintainability | Can the change be understood and modified within clear component boundaries? |
 | Extensibility | Can future providers, tools, memory implementations, or plugins use a documented extension point? |
 | Performance | Does the design avoid unnecessary latency in the interactive voice path? |
 | Scalability | Does the design avoid assumptions that prevent concurrent sessions or future horizontal scaling? |
 | Reliability | Are recoverable failures localized and reported predictably? |
 | Testability | Can the behavior be tested with fake dependencies and without live external providers? |
 | Observability | Can important runtime behavior be traced safely through logs, metrics, or events? |
+| Runtime Simplicity | Can the behavior fit the Runtime Kernel, Manager, Service, Contract, Adapter, and Infrastructure ownership model without architectural restructuring? |
 | Developer Experience | Will an integrating developer encounter clear APIs, useful errors, and practical documentation? |
 
 A design should be reconsidered when it weakens a critical quality attribute without a documented reason.
@@ -482,14 +558,14 @@ A design should be reconsidered when it weakens a critical quality attribute wit
 
 ## Rationale
 
-These eight quality attributes reflect VoxCore's intended role as a reusable voice AI runtime.
+These nine quality attributes reflect VoxCore's intended role as a reusable voice AI runtime.
 
 The runtime coordinates real-time audio, transcripts, language model calls, tool execution, memory, synthesis, streaming responses, APIs, SDKs, and external providers. That combination creates two long-term architectural pressures:
 
 - The runtime must stay responsive enough for voice interaction.
 - The runtime must stay modular enough to support provider replacement, testing, and future extension.
 
-The selected attributes balance those pressures. Maintainability and extensibility protect the project over time. Performance protects the user experience. Reliability, testability, observability, scalability, and developer experience make the runtime practical to operate, verify, and adopt.
+The selected attributes balance those pressures. Maintainability, runtime simplicity, and extensibility protect the project over time. Performance protects the user experience. Reliability, testability, observability, scalability, and developer experience make the runtime practical to operate, verify, and adopt.
 
 ---
 
@@ -510,8 +586,9 @@ The selected attributes balance those pressures. Maintainability and extensibili
 The quality attributes in this document create the following expectations for future architecture work:
 
 - Architecture documents should state which quality attributes they support.
-- Runtime modules should keep responsibilities clear and dependencies explicit.
-- Provider-specific behavior should remain behind stable interfaces.
+- Runtime components should keep responsibilities clear and dependencies explicit.
+- Runtime Managers should remain separate from Runtime Services.
+- Provider-specific behavior should remain behind Domain Contracts and Provider Adapters.
 - Streaming behavior should be evaluated for latency impact.
 - Session state should remain isolated.
 - Core behavior should be testable without live external providers.
@@ -520,6 +597,16 @@ The quality attributes in this document create the following expectations for fu
 - Architectural trade-offs should be explicit when a critical quality attribute is weakened.
 
 These consequences should be treated as design review criteria as VoxCore evolves.
+
+---
+
+## Quality Attribute Validation
+
+The quality attributes defined in this document serve as evaluation criteria for architectural decisions throughout the lifetime of VoxCore.
+
+Whenever a new runtime component, provider integration, communication mechanism, or deployment strategy is introduced, it should be evaluated against these quality attributes.
+
+Priority should be given to preserving critical attributes such as maintainability, runtime simplicity, extensibility, and performance, even when implementation convenience suggests alternative approaches.
 
 ---
 
@@ -532,9 +619,10 @@ These consequences should be treated as design review criteria as VoxCore evolve
 | [Architectural Goals](01-architectural-goals.md) | Defines the broader architecture goals that these attributes make measurable. |
 | [Architectural Principles](03-architectural-principles.md) | Will define rules and design principles used to satisfy these attributes. |
 | [Runtime Architecture](05-runtime-architecture.md) | Will explain how runtime execution supports performance, reliability, scalability, and observability. |
-| [Provider Architecture](07-provider-architecture.md) | Will explain how provider boundaries support extensibility, maintainability, and testability. |
-| [Logging and Observability](16-logging-observability.md) | Will explain how observability is implemented architecturally. |
-| [Extension Points](19-extension-points.md) | Will explain how extensibility is exposed safely. |
+| [Component Architecture](06-component-architecture.md) | Defines ownership boundaries that support extensibility, maintainability, and testability. |
+| [Communication Architecture](07-communication-architecture.md) | Will explain runtime communication and event flow. |
+| [Infrastructure Architecture](08-infrastructure-architecture.md) | Will explain how observability and other cross-cutting concerns are implemented architecturally. |
+| [Extension Points](10-extension-points.md) | Will explain how extensibility is exposed safely. |
 
 ---
 
