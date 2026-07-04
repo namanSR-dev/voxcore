@@ -8,7 +8,21 @@ dependencies = []
 
 [dependency-groups]
 dev = [
-    "pyright>=1.1.411",
-    "pytest>=9.1.1",
-    "ruff>=0.15.20",
+    "mypy>=1.14.0",
+    "pytest>=8.0.0",
+    "ruff>=0.1.0",
 ]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "B", "I"]
+ignore = []
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+ignore_missing_imports = true
+warn_unused_ignores = true

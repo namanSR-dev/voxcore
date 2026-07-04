@@ -15,15 +15,12 @@ class IPlugin(ABC):
     def activate(self, registry: Any) -> None:
         """
         Invoked when the plugin is booted. The plugin should register its tools or providers here.
-        
-        Args:
-            registry (Any): The system registry where the plugin can inject its capabilities.
         """
         pass
 
     @abstractmethod
     def deactivate(self) -> None:
         """
-        Invoked during system shutdown to allow the plugin to safely clean up resources.
+        Invoked during shutdown to allow the plugin to clean up resources.
         """
         pass

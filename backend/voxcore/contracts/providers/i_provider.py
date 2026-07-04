@@ -15,12 +15,6 @@ class IProvider(ABC):
     async def generate_response(self, context: Any) -> Any:
         """
         Submits the assembled context to the provider for inference.
-        
-        Args:
-            context (Any): The conversation context or prompt payload.
-            
-        Returns:
-            Any: The provider's generated response.
         """
         pass
 
@@ -28,11 +22,5 @@ class IProvider(ABC):
     async def generate_embeddings(self, text: str) -> List[float]:
         """
         Requests vector embeddings for the provided text.
-        
-        Args:
-            text (str): The raw text to embed.
-            
-        Returns:
-            List[float]: A list of floats representing the vector embedding.
         """
         pass
