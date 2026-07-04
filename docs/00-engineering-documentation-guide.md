@@ -19,7 +19,7 @@ By establishing a clear hierarchy, this guide ensures that:
 
 VoxCore uses a **documentation-driven development** methodology. The documentation is not a retrospective record of the codebase; rather, it is the authoritative blueprint that constrains and guides the implementation.
 
-```
+```text
 [README]
    │
    ▼
@@ -32,7 +32,10 @@ VoxCore uses a **documentation-driven development** methodology. The documentati
 [Package Architecture]
    │
    ▼
-[Low-Level Design (LLD)]
+[Low-Level Design]
+   │
+   ▼
+[Implementation Specification]
    │
    ▼
 [Implementation]
@@ -58,7 +61,8 @@ The following table defines the purpose and scope of each documentation layer in
 | **Requirements** | Establishes the product requirements and externally observable behavior. | *What* must the system do? |
 | **System Architecture** | Defines the logical structure, runtime flows, and system-wide design patterns. | *How* is the system logically designed? |
 | **Package Architecture** | Establishes the physical source tree structure, dependency rules, and package boundaries. | *Where* does each responsibility reside in the repository? |
-| **Low-Level Design (LLD)** | Translates package-level concerns into detailed component interfaces, modules, and schemas. | *How* are individual modules and internal components structured? |
+| **Low-Level Design** | Translates package-level concerns into detailed component interfaces, modules, and schemas. | *How* are individual modules and internal components structured? |
+| **Implementation Specification** | Translates the Low-Level Design into concrete developer blueprints (file paths, classes, signatures). | *What* exactly does the developer need to build in the codebase? |
 | **Public Interfaces** | Authoritative definition of public protocol boundaries and client integration APIs. | *How* do external clients and SDKs integrate with VoxCore? |
 | **Implementation** | The actual source code and runtime behavior. | *How* is the logic built and compiled? |
 | **Testing** | Verification protocols, test coverage constraints, and testing frameworks. | *How* is the correctness of the implementation verified? |
@@ -78,6 +82,7 @@ flowchart TD
     sys["System Architecture Layer<br/>(Logical Design & Boundaries)"]:::sysStyle
     pkg["Package Architecture Layer<br/>(Source Layout & Code Boundaries)"]:::pkgStyle
     lld["Low-Level Design Layer<br/>(Module Interfaces & Internals)"]:::lldStyle
+    implspec["Implementation Spec Layer<br/>(Developer Blueprints & Skeletons)"]:::implspecStyle
     impl["Implementation Layer<br/>(Source Code & Packages)"]:::implStyle
     test["Testing & Verification Layer<br/>(Code Quality & Correctness)"]:::testStyle
 
@@ -85,7 +90,8 @@ flowchart TD
     srs --> sys
     sys --> pkg
     pkg --> lld
-    lld --> impl
+    lld --> implspec
+    implspec --> impl
     impl --> test
 
     classDef projStyle fill:#EFF6FF,stroke:#2563EB,color:#1E40AF,stroke-width:2px,rx:6px,ry:6px;
@@ -93,6 +99,7 @@ flowchart TD
     classDef sysStyle fill:#ECFDF5,stroke:#059669,color:#065F46,stroke-width:2px,rx:6px,ry:6px;
     classDef pkgStyle fill:#FAF5FF,stroke:#7C3AED,color:#5B21B6,stroke-width:3px,rx:6px,ry:6px;
     classDef lldStyle fill:#F1F5F9,stroke:#475569,color:#1E293B,stroke-width:2px,rx:6px,ry:6px;
+    classDef implspecStyle fill:#FFFBEB,stroke:#F59E0B,color:#92400E,stroke-width:2px,rx:6px,ry:6px;
     classDef implStyle fill:#FFF1F2,stroke:#F43F5E,color:#9F1239,stroke-width:2px,rx:6px,ry:6px;
     classDef testStyle fill:#F0FDF4,stroke:#22C55E,color:#166534,stroke-width:2px,rx:6px,ry:6px;
 ```
@@ -101,7 +108,7 @@ flowchart TD
 
 ## 5. Documentation Map
 
-The VoxCore documentation is organized into the following categories:
+The VoxCore documentation is organized into the following categories, exactly reflecting the current repository structure:
 
 ### Project Documentation
 These files reside in the repository root and cover administrative and operational concerns:
@@ -109,37 +116,37 @@ These files reside in the repository root and cover administrative and operation
 - **[Roadmap](../ROADMAP.md)**: Details the planned features, milestones, and release windows.
 - **[Contributing](../CONTRIBUTING.md)**: Guidelines for contributing code, submitting issues, and building components.
 - **[Changelog](../CHANGELOG.md)**: Historic record of changes, fixes, and architectural adjustments.
+- **[Glossary](glossary.md)**: Standardized terminology used across all documentation.
 
 ### Requirements Layer
 - **[Software Requirements Specification](01-software-requirements-specification.md)**: Authoritative functional and non-functional requirements.
 
 ### System Architecture Layer
-Located in [docs/02-system-architecture/](02-system-architecture/README.md), this layer defines logical runtime and structural design:
-- **[README](02-system-architecture/README.md)**: System Architecture introduction and overview.
-- **[Architectural Goals](02-system-architecture/01-architectural-goals.md)**: Core objectives driving VoxCore design.
-- **[Quality Attributes](02-system-architecture/02-quality-attributes.md)**: Latency, reliability, scalability, and security constraints.
-- **[Architectural Principles](02-system-architecture/03-architectural-principles.md)**: Structural paradigms and design guidelines.
-- **[Layered Architecture](02-system-architecture/04-layered-architecture.md)**: Subsystem layering and boundary definitions.
-- **[Runtime Architecture](02-system-architecture/05-runtime-architecture.md)**: Execution models, concurrency, and loops.
-- **[Component Architecture](02-system-architecture/06-component-architecture.md)**: Core components and modular units.
-- **[Communication Architecture](02-system-architecture/07-communication-architecture.md)**: Message routing and data flow.
-- **[Infrastructure Architecture](02-system-architecture/08-infrastructure-architecture.md)**: Deployment topologies and host environments.
-- **[Deployment Architecture](02-system-architecture/09-deployment-architecture.md)**: Packaging, execution containers, and dependencies.
-- **[Extension Points](02-system-architecture/10-extension-points.md)**: Core framework plugin and custom behavior hook boundaries.
+Located in `02-system-architecture/`, this layer defines logical runtime and structural design:
+- **01-architectural-goals.md**: Core objectives driving VoxCore design.
+- **02-quality-attributes.md**: Latency, reliability, scalability, and security constraints.
+- **03-architectural-principles.md**: Structural paradigms and design guidelines.
+- **04-layered-architecture.md**: Subsystem layering and boundary definitions.
+- **05-runtime-architecture.md**: Execution models, concurrency, and loops.
+- **06-component-architecture.md**: Core components and modular units.
+- **07-communication-architecture.md**: Message routing and data flow.
+- **08-infrastructure-architecture.md**: Deployment topologies and host environments.
+- **09-deployment-architecture.md**: Packaging, execution containers, and dependencies.
+- **10-extension-points.md**: Core framework plugin and custom behavior hook boundaries.
 
 ### Package Architecture Layer
-Located in [docs/03-package-architecture/](03-package-architecture/README.md), this layer maps logical systems to the physical source layout:
-- **[README](03-package-architecture/README.md)**: Package Architecture introduction and overview.
-- **[Source Tree](03-package-architecture/01-source-tree.md)**: Physical directory layout and file organization guidelines.
-- **[Dependency Rules](03-package-architecture/02-package-dependency-rules.md)**: Import direction constraints and dependency directions.
-- **[Package Guidelines](03-package-architecture/03-package-guidelines.md)**: Structural layout and file structure conventions inside a package.
-- **[Responsibilities](03-package-architecture/04-package-responsibilities.md)**: Explicit ownership and boundaries of backend packages.
-- **[Communication](03-package-architecture/05-package-communication.md)**: Interface-driven collaboration rules between packages.
-- **[Extension Rules](03-package-architecture/06-package-extension-rules.md)**: Rules for adding packages, providers, tools, and plugins.
+Located in `03-package-architecture/`, this layer maps logical systems to the physical source layout:
+- **01-source-tree.md**: Physical directory layout and file organization guidelines.
+- **02-package-dependency-rules.md**: Import direction constraints and dependency directions.
+- **04-package-responsibilities.md**: Explicit ownership and boundaries of backend packages.
+- **05-package-communication.md**: Interface-driven collaboration rules between packages.
+- **06-package-extension-rules.md**: Rules for adding packages, providers, tools, and plugins.
 
-### Low-Level Design (LLD) *(Planned)*
-This layer translates Package Architecture and contracts into implementation-ready module specs, describing internal classes, data schemas, and helper utilities.
-- **Module Design**: Internal class interactions, algorithms, and helper boundaries.
+### Low-Level Design Layer
+Located in `04-low-level-design/`, this layer translates Package Architecture and contracts into implementation-ready module specs, describing internal classes, data schemas, and helper boundaries.
+
+### Implementation Specification Layer
+Located in `05-implementation-specification/`, this layer acts as the bridge between architecture and implementation. It translates the abstract Low-Level Design documents into concrete, language-specific developer blueprints (file paths, classes, and method signatures).
 
 ### Public Interfaces *(Planned)*
 Detailed API specifications for external consumers:
@@ -166,11 +173,11 @@ flowchart TD
     end
 
     subgraph PathCont ["Contributors"]
-        r2["README.md"]:::projStyle --> s2["SRS"]:::reqStyle --> sy1["System Arch"]:::sysStyle --> pk1["Package Arch"]:::pkgStyle --> ld1["LLD"]:::lldStyle --> co1["Contributing"]:::projStyle
+        r2["README.md"]:::projStyle --> s2["SRS"]:::reqStyle --> sy1["System Arch"]:::sysStyle --> pk1["Package Arch"]:::pkgStyle --> ld1["Low-Level Design"]:::lldStyle --> is1["Implementation Spec"]:::implspecStyle --> co1["Contributing"]:::projStyle
     end
 
     subgraph PathArch ["Architects"]
-        s3["SRS"]:::reqStyle --> sy2["System Arch"]:::sysStyle --> pk2["Package Arch"]:::pkgStyle --> ld2["LLD"]:::lldStyle --> adr["ADRs"]:::lldStyle
+        s3["SRS"]:::reqStyle --> sy2["System Arch"]:::sysStyle --> pk2["Package Arch"]:::pkgStyle --> ld2["Low-Level Design"]:::lldStyle --> adr["ADRs"]:::lldStyle
     end
 
     subgraph PathMaint ["Maintainers"]
@@ -182,6 +189,7 @@ flowchart TD
     classDef sysStyle fill:#ECFDF5,stroke:#059669,color:#065F46,stroke-width:2px,rx:6px,ry:6px;
     classDef pkgStyle fill:#FAF5FF,stroke:#7C3AED,color:#5B21B6,stroke-width:2px,rx:6px,ry:6px;
     classDef lldStyle fill:#F1F5F9,stroke:#475569,color:#1E293B,stroke-width:2px,rx:6px,ry:6px;
+    classDef implspecStyle fill:#FFFBEB,stroke:#F59E0B,color:#92400E,stroke-width:2px,rx:6px,ry:6px;
     classDef testStyle fill:#F0FDF4,stroke:#22C55E,color:#166534,stroke-width:2px,rx:6px,ry:6px;
 ```
 
@@ -192,17 +200,18 @@ flowchart TD
 
 ### Path 2: Contributors (Writing Code)
 1. **[README](../README.md)** & **[Software Requirements Specification](01-software-requirements-specification.md)**.
-2. **[System Architecture Layer](02-system-architecture/README.md)**: Logical design context.
-3. **[Package Architecture Layer](03-package-architecture/README.md)**: Focus on Source Tree layout and Dependency Rules.
-4. **[Low-Level Design (LLD)](04-package-responsibilities.md)**: Details on classes and modules (when available).
-5. **[Contributing](../CONTRIBUTING.md)**: Style guides, PR templates, and workflow rules.
+2. **[System Architecture Layer](02-system-architecture/)**: Logical design context.
+3. **[Package Architecture Layer](03-package-architecture/)**: Focus on Source Tree layout and Dependency Rules.
+4. **[Low-Level Design](04-low-level-design/)**: Internal classes and algorithms.
+5. **[Implementation Specification](05-implementation-specification/)**: Developer blueprints providing exact file structures and class signatures.
+6. **[Contributing](../CONTRIBUTING.md)**: Style guides, PR templates, and workflow rules.
 
 ### Path 3: Software Architects (System Integrity)
 1. **[Software Requirements Specification](01-software-requirements-specification.md)**: Trace system requirements.
-2. **[System Architecture Layer](02-system-architecture/README.md)**: Analyze logical layers, quality attributes, and runtime loops.
-3. **[Package Architecture Layer](03-package-architecture/README.md)**: Verify physical package responsibilities and dependencies.
-4. **Low-Level Design (LLD)**: Analyze module coupling and cohesion.
-5. **ADRs**: Track design decisions and architectural trade-offs.
+2. **[System Architecture Layer](02-system-architecture/)**: Analyze logical layers, quality attributes, and runtime loops.
+3. **[Package Architecture Layer](03-package-architecture/)**: Verify physical package responsibilities and dependencies.
+4. **[Low-Level Design](04-low-level-design/)**: Analyze module coupling and cohesion.
+5. **ADRs**: Review design decisions and architectural trade-offs whenever introduced.
 
 ### Path 4: Maintainers (Releasing & Operating)
 1. **All Architect Docs**: Complete understanding of system limits.
@@ -231,9 +240,10 @@ The relationships between documentation layers are structured as follows:
 
 - **[README](../README.md)**: Introduces the project scope and sets the context.
 - **[Software Requirements Specification](01-software-requirements-specification.md)**: Defines *what* the system must build.
-- **[System Architecture](02-system-architecture/README.md)**: Defines the logical *how* (concurrency, loops, modules).
-- **[Package Architecture](03-package-architecture/README.md)**: Defines *where* the logical code lives physically.
-- **Low-Level Design (LLD)**: Defines the internal structures (classes, interfaces) of individual packages.
+- **[System Architecture](02-system-architecture/)**: Defines the logical *how* (concurrency, loops, modules).
+- **[Package Architecture](03-package-architecture/)**: Defines *where* the logical code lives physically.
+- **[Low-Level Design](04-low-level-design/)**: Defines the internal structures (classes, interfaces) of individual packages.
+- **[Implementation Specification](05-implementation-specification/)**: Bridges architecture and implementation through concrete structural blueprints.
 - **Implementation**: Realizes the design as source code.
 - **Testing**: Verifies that the implementation conforms to both the Requirements and the architectural constraints.
 
@@ -243,7 +253,8 @@ The relationships between documentation layers are structured as follows:
 | **System Architecture** | SRS | Define logical design | System Limits / Goals |
 | **Package Architecture** | System Architecture | Define code layout | Dependency matrix |
 | **Low-Level Design (LLD)** | Package Architecture | Define module classes | Design constraints |
-| **Implementation** | LLD | Build code | Code compilation |
+| **Implementation Spec** | LLD | Concrete code structure | LLD Constraints |
+| **Implementation** | Implementation Spec | Build code | Code compilation |
 | **Testing** | Implementation | Verify functionality | SRS / Architecture rules |
 
 ---

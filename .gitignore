@@ -36,3 +36,21 @@ build/
 
 # Local model downloads
 models/
+
+########################################################
+# Personal Engineering Notebook
+########################################################
+
+engineering-playbook/
+EngineeringPlaybook/
+Engineering Notebook/
+personal-notes/
+notes/
+learning/
+Learning/
+journal/
+Journal/
+
+*.canvas
+*.drawio.bak
+*.bak.md
