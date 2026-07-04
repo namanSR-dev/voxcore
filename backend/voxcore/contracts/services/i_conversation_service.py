@@ -1,0 +1,25 @@
+"""
+contracts/services/i_conversation_service.py
+
+Defines the contract for managing conversation state and turns.
+"""
+from abc import ABC, abstractmethod
+
+class IConversationService(ABC):
+    """
+    Abstract interface for handling conversational logic independent of transport.
+    """
+    
+    @abstractmethod
+    async def process_turn(self, session_id: str, utterance: str) -> str:
+        """
+        Processes a single conversational turn.
+        
+        Args:
+            session_id (str): The unique identifier for the current conversation session.
+            utterance (str): The spoken or typed input from the user.
+            
+        Returns:
+            str: The AI's generated response to be sent back to the user.
+        """
+        pass
