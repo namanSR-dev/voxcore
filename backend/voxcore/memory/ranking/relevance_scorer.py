@@ -1,6 +1,5 @@
 """
 memory/ranking/relevance_scorer.py
-
 Scores and sorts retrieved memories based on relevance heuristics.
 """
 from typing import List, Any
@@ -16,7 +15,7 @@ class RelevanceScorer:
         """
         Sorts candidates descending by their calculated relevance score.
         """
-        pass
+        return candidates
 
     def _apply_recency_decay(self, candidate: Any) -> float:
-        pass
+        return 1.0

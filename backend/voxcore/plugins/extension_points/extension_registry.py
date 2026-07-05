@@ -1,6 +1,5 @@
 """
 plugins/extension_points/extension_registry.py
-
 The safe sandbox object passed to plugins to allow them to contribute capabilities.
 """
 from typing import Any

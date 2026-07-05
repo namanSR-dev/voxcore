@@ -1,6 +1,5 @@
 """
 plugins/dependencies/dependency_resolver.py
-
 Calculates safe activation ordering for plugins that depend on each other.
 """
 from typing import List, Any
@@ -16,7 +15,7 @@ class DependencyResolver:
         """
         Determines the ordered list of plugins that satisfies all dependency constraints.
         """
-        pass
+        return plugins
 
     def _topological_sort(self, graph: Any) -> List[Any]:
-        pass
+        return []
