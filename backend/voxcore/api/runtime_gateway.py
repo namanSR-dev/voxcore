@@ -10,27 +10,8 @@ class RuntimeGateway:
     """
     Defines the strict boundary through which the API package hands work to the runtime.
     """
-    
     def __init__(self, pipeline: RuntimeExecutionPipeline) -> None:
-        """
-        Initializes the gateway with a reference to the core execution pipeline.
-        
-        Args:
-            pipeline (RuntimeExecutionPipeline): The main execution engine of the system.
-        """
-        pass
+        self.pipeline = pipeline
 
     async def submit_request(self, request: Request) -> Response:
-        """
-        Submits a mapped Request to the runtime pipeline for execution.
-        
-        Args:
-            request (Request): The domain Request entity containing user input.
-            
-        Returns:
-            Response: The resulting domain Response entity from the AI.
-            
-        Raises:
-            Exception: Any unhandled domain exception thrown by the runtime.
-        """
-        pass
+        return await self.pipeline.execute(request)
