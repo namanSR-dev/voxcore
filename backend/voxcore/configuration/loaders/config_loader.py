@@ -10,31 +10,20 @@ class ConfigLoader:
     Retrieves raw configuration data from multiple registered providers.
     """
     def __init__(self, providers: List[Any]) -> None:
-        """
-        Initializes the config loader.
-        
-        Args:
-            providers (List[Any]): A list of configuration providers (e.g., EnvProvider, YamlProvider).
-        """
-        pass
+        self._providers = providers
 
     def load_all(self) -> Dict[str, Any]:
         """
         Loads raw configurations from all providers.
         
         Returns:
-            Dict[str, Any]: Dict containing raw configuration values.
+            Dict containing raw configuration values.
         """
-        pass
+        combined = {}
+        for provider in self._providers:
+            data = self._fetch_from_provider(provider)
+            combined.update(data)
+        return combined
 
     def _fetch_from_provider(self, provider: Any) -> Dict[str, Any]:
-        """
-        Internal helper to fetch data from a single provider safely.
-        
-        Args:
-            provider (Any): The provider instance to fetch from.
-            
-        Returns:
-            Dict[str, Any]: The loaded configuration subset.
-        """
-        pass
+        return provider.fetch()
