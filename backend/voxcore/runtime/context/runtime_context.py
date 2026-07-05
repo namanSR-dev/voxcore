@@ -10,16 +10,19 @@ class RuntimeContext:
     State container passed through the execution pipeline.
     """
     def __init__(self, session_id: str) -> None:
-        pass
+        self.session_id = session_id
+        self._store: Dict[str, Any] = {}
 
     def set(self, key: str, value: Any) -> None:
         """
         Stores a value in the context.
         """
-        pass
+        self._store[key] = value
 
     def get(self, key: str) -> Any:
         """
         Retrieves a value from the context.
         """
-        pass
+        if key not in self._store:
+            raise KeyError(f"Key '{key}' not found in RuntimeContext")
+        return self._store[key]
