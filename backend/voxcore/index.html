@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoxCore Demo App</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #121212;
+            color: #ffffff;
+        }
+        .container {
+            text-align: center;
+            padding: 40px;
+            border-radius: 12px;
+            background: #1e1e1e;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 400px;
+        }
+        h1 { margin-top: 0; color: #4CAF50; }
+        .status {
+            margin: 20px 0;
+            padding: 15px;
+            border-radius: 6px;
+            background: #2a2a2a;
+            font-family: monospace;
+            font-size: 1.1em;
+            color: #4CAF50;
+        }
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .btn-connect {
+            background: #4CAF50;
+            color: white;
+        }
+        .btn-connect:hover { background: #45a049; }
+        
+        .btn-disconnect {
+            background: #f44336;
+            color: white;
+            display: none;
+        }
+        .btn-disconnect:hover { background: #d32f2f; }
+        
+        /* Simple mic animation */
+        .mic-active {
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(76, 175, 80, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container" id="app-container">
+        <h1>VoxCore Voice AI</h1>
+        <div class="status" id="status">Status: Disconnected</div>
+        <button class="btn-connect" id="btn-connect">Connect Microphone</button>
+        <button class="btn-disconnect" id="btn-disconnect">Disconnect</button>
+    </div>
+
+    <!-- Import the official VoxCore Client SDK -->
+    <script src="/static/voxcore-client.js"></script>
+
+    <script>
+        const btnConnect = document.getElementById('btn-connect');
+        const btnDisconnect = document.getElementById('btn-disconnect');
+        const statusDiv = document.getElementById('status');
+        const appContainer = document.getElementById('app-container');
+
+        let client = null;
+
+        btnConnect.addEventListener('click', async () => {
+            const wsUrl = `ws://${window.location.host}/v1/voice`;
+            client = new VoxCoreClient(wsUrl);
+
+            // Bind UI events to the SDK callbacks
+            client.onStateChange = (state) => {
+                statusDiv.innerText = `Status: ${state}`;
+                
+                if (state.includes("Connected")) {
+                    btnConnect.style.display = 'none';
+                    btnDisconnect.style.display = 'block';
+                    appContainer.classList.add("mic-active");
+                } else if (state.includes("Disconnected")) {
+                    btnConnect.style.display = 'block';
+                    btnDisconnect.style.display = 'none';
+                    appContainer.classList.remove("mic-active");
+                }
+            };
+
+            client.onAiSpeaking = (isSpeaking) => {
+                if (isSpeaking) {
+                    appContainer.classList.remove("mic-active");
+                } else {
+                    appContainer.classList.add("mic-active");
+                }
+            };
+
+            client.onError = (err) => {
+                console.error("VoxCore Error:", err);
+                statusDiv.innerText = "Error: " + err.message;
+            };
+
+            await client.connect();
+        });
+
+        btnDisconnect.addEventListener('click', () => {
+            if (client) {
+                client.disconnect();
+            }
+        });
+    </script>
+</body>
+</html>
