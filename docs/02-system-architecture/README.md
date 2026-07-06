@@ -222,7 +222,7 @@ Future ADR examples may include:
 
 - `ADR-001-provider-abstraction.md`
 - `ADR-002-streaming-first.md`
-- `ADR-003-websocket-over-http.md`
+- `ADR-003-Mic-Audio-Optimization.md`
 - `ADR-004-plugin-system.md`
 
 ADRs should be used for decisions that are difficult to reverse, affect multiple documents, or define long-term architectural direction.

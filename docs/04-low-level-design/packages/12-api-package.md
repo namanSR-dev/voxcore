@@ -224,6 +224,7 @@ The API package isolates transport, making it highly extensible:
 
 The following constraints are mandatory:
 * **API package shall not execute business logic.**
+  * *Exception (ADR-003)*: `websocket_controller.py` currently executes Silero VAD gating logic to optimize raw PCM microphone audio. This is a temporary architectural violation until the transport is migrated to WebRTC.
 * **API package shall not access runtime internals.**
 * **API package shall not own runtime state.** (e.g., Do not store session histories in the Controller).
 * **API package shall not schedule work.**

@@ -110,6 +110,7 @@ class HttpController:
 api/controllers/websocket_controller.py
 
 Manages long-lived bidirectional WebSocket connections for streaming responses.
+*Note: As per ADR-003, this controller currently holds VAD noise gating logic as a temporary optimization until migration to WebRTC.*
 """
 from voxcore.api.runtime_gateway import RuntimeGateway
 from voxcore.api.exception_translator import ExceptionTranslator

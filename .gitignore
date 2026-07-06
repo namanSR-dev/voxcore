@@ -54,3 +54,6 @@ Journal/
 *.canvas
 *.drawio.bak
 *.bak.md
+
+# Agent Rules
+.agents/
