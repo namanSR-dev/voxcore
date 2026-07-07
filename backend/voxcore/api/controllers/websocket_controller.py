@@ -11,6 +11,10 @@ from voxcore.api.exception_translator import ExceptionTranslator
 from voxcore.contracts.runtime.models import Request
 from voxcore.contracts.providers import ISttProvider, ITtsProvider, IVadProvider
 
+class PipelineState:
+    def __init__(self):
+        self.stt_finished = False
+
 class WebSocketController:
     """
     WebSocket route handler that manages connection state and orchestrates the Voice Pipeline.
@@ -46,12 +50,14 @@ class WebSocketController:
         silence_frames = 0
         MAX_SILENCE_FRAMES = 12  # 12 chunks * 128ms = 1.5 seconds of silence before processing
         MIN_AUDIO_BYTES = 16000 # Minimum 0.5s of audio to process
-        MAX_AUDIO_BYTES = 320000 # Maximum 10 seconds of audio buffer (16000hz * 2 bytes * 10s)
+        MAX_AUDIO_BYTES = 960000 # Maximum 30 seconds of audio buffer (16000hz * 2 bytes * 30s)
         
         # Keep track of the currently running pipeline task so we can interrupt it
         import asyncio
         import time
         pipeline_task = None
+        pipeline_state = None
+        last_audio_processed = b""
         was_speaking = False
         
         frame_count = 0
@@ -89,6 +95,13 @@ class WebSocketController:
                                 print(f"[{time.strftime('%H:%M:%S')}] INTERRUPT: Canceling AI generation...")
                                 pipeline_task.cancel()
                                 
+                                # If STT hasn't finished, the audio chunk wasn't transcribed!
+                                # We must restore it to the buffer so it's not lost.
+                                if pipeline_state and not pipeline_state.stt_finished and last_audio_processed:
+                                    new_buffer = bytearray(last_audio_processed)
+                                    new_buffer.extend(audio_buffer)
+                                    audio_buffer = new_buffer
+                                
                         # Prepend the pre-speech buffer
                         if len(audio_buffer) == 0:
                             for pre_chunk in pre_speech_buffer:
@@ -100,12 +113,20 @@ class WebSocketController:
                         silence_frames = 0
                         
                         # 3. Maximum Buffer Cutoff (Safety Limit)
-                        # If the user has been talking continuously for 10 seconds, force process the chunk!
+                        # If the user has been talking continuously for 30 seconds, force process the chunk!
                         if len(audio_buffer) >= MAX_AUDIO_BYTES:
                             print(f"[{time.strftime('%H:%M:%S')}] Max buffer limit reached. Processing audio...")
-                            audio_copy = bytes(audio_buffer)
+                            if pipeline_task and not pipeline_task.done():
+                                pipeline_task.cancel()
+                                if pipeline_state and not pipeline_state.stt_finished and last_audio_processed:
+                                    new_buffer = bytearray(last_audio_processed)
+                                    new_buffer.extend(audio_buffer)
+                                    audio_buffer = new_buffer
+                                    
+                            last_audio_processed = bytes(audio_buffer)
+                            pipeline_state = PipelineState()
                             pipeline_task = asyncio.create_task(
-                                self._process_pipeline_task(websocket, audio_copy, connection_id)
+                                self._process_pipeline_task(websocket, last_audio_processed, connection_id, pipeline_state)
                             )
                             audio_buffer.clear()
                     else:
@@ -122,10 +143,18 @@ class WebSocketController:
                             if silence_frames >= MAX_SILENCE_FRAMES:
                                 was_speaking = False
                                 if len(audio_buffer) >= MIN_AUDIO_BYTES:
+                                    if pipeline_task and not pipeline_task.done():
+                                        pipeline_task.cancel()
+                                        if pipeline_state and not pipeline_state.stt_finished and last_audio_processed:
+                                            new_buffer = bytearray(last_audio_processed)
+                                            new_buffer.extend(audio_buffer)
+                                            audio_buffer = new_buffer
+                                            
                                     # Fire-and-forget the pipeline so we can keep listening
-                                    audio_copy = bytes(audio_buffer)
+                                    last_audio_processed = bytes(audio_buffer)
+                                    pipeline_state = PipelineState()
                                     pipeline_task = asyncio.create_task(
-                                        self._process_pipeline_task(websocket, audio_copy, connection_id)
+                                        self._process_pipeline_task(websocket, last_audio_processed, connection_id, pipeline_state)
                                     )
                                     
                                 # Clear the buffer for the next utterance
@@ -141,7 +170,7 @@ class WebSocketController:
         except WebSocketDisconnect:
             print("Client disconnected.")
             
-    async def _process_pipeline_task(self, websocket: WebSocket, audio_bytes: bytes, connection_id: str) -> None:
+    async def _process_pipeline_task(self, websocket: WebSocket, audio_bytes: bytes, connection_id: str, state: PipelineState | None = None) -> None:
         """Runs the STT -> LLM -> TTS pipeline asynchronously with diagnostic timestamps."""
         import asyncio
         import time
@@ -172,6 +201,9 @@ class WebSocketController:
         try:
             # 1. Speech-to-Text
             transcript = await self.stt.transcribe(audio_bytes)
+            if state is not None:
+                state.stt_finished = True
+                
             stt_t = time.time()
             print(f"[{stt_t - start_t:.2f}s] STT Transcribed: '{transcript}'")
             
