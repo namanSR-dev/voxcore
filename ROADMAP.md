@@ -10,10 +10,10 @@ VoxCore aims to become the open-source runtime layer for real-time conversationa
 
 | Item | Status |
 | --- | --- |
-| Current Version | v0.1.0 |
-| Product Phase | Foundation and documentation |
-| Stability | Pre-1.0; public behavior may change |
-| Primary Focus | Defining product scope, requirements, and release direction |
+| Current Version | v0.2.0 |
+| Product Phase | Core Voice Pipeline & Memory Implementation |
+| Stability | Alpha; Core streaming and memory systems are established. |
+| Primary Focus | Hardening voice pipeline, Text Normalization, and Multi-Tenancy capabilities. |
 
 ## 3. Release Strategy
 
@@ -32,13 +32,13 @@ Early     Stable    Ecosystem
 
 | Version | Theme | Product Outcome | Status |
 | --- | --- | --- | --- |
-| v0.1 | Repository Foundation | Establish project identity, documentation, licensing, contribution basics, and requirements. | In progress |
-| v0.2 | Runtime Foundation | Define the first usable runtime boundary for local development. | Planned |
-| v0.3 | Streaming | Support real-time audio flow between client applications and the runtime. | Planned |
-| v0.4 | Conversation | Support context-aware conversational response generation. | Planned |
+| v0.1 | Repository Foundation | Establish project identity, documentation, licensing, contribution basics, and requirements. | Done |
+| v0.2 | Runtime Foundation | Define the first usable runtime boundary for local development. | Done |
+| v0.3 | Streaming | Support real-time audio flow between client applications and the runtime. | Done |
+| v0.4 | Conversation | Support context-aware conversational response generation. | Done |
 | v0.5 | Tool Engine | Allow applications to expose callable actions during conversations. | Planned |
-| v0.6 | Memory | Add session memory as a first-class runtime capability. | Planned |
-| v0.7 | Provider Ecosystem | Support interchangeable STT, LLM, and TTS providers. | Planned |
+| v0.6 | Memory | Add session memory as a first-class runtime capability. | Done |
+| v0.7 | Provider Ecosystem | Support interchangeable STT, LLM, and TTS providers. | Done |
 | v0.8 | SDKs | Provide developer-friendly Python and TypeScript integration paths. | Planned |
 | v0.9 | Release Candidate | Harden documentation, examples, testing, and compatibility before v1.0. | Planned |
 | v1.0 | Stable Runtime | Deliver the first stable open-source runtime for production evaluation. | Planned |
@@ -74,3 +74,4 @@ Early     Stable    Ecosystem
 | Version | Completed Work |
 | --- | --- |
 | v0.1.0 | Created project metadata, MIT license, contribution guide, initial roadmap, Documentation Index and SRS documentation. |
+| v0.2.0 | Implemented core Voice Pipeline architecture (ExecutionPipeline). Integrated Silero VAD, Groq STT, and Piper TTS. Built robust Session Memory system with full interrupt context preservation and concurrency management. |

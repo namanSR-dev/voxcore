@@ -4,8 +4,8 @@ Open-source runtime for building real-time conversational AI.
 
 ![Python](https://img.shields.io/badge/Python-3.12+-3776AB?style=flat&logo=python&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![Version](https://img.shields.io/badge/Version-v0.1.0-blue)
-![Status](https://img.shields.io/badge/Status-Early%20Development-orange)
+![Version](https://img.shields.io/badge/Version-v0.2.0-blue)
+![Status](https://img.shields.io/badge/Status-Active%20Development-green)
 
 ## Introduction
 
@@ -23,27 +23,28 @@ VoxCore provides the reusable runtime layer for voice-first applications. It is 
 
 VoxCore is designed around these core capabilities:
 
-- Streaming speech-to-text
-- Conversation engine
-- Tool calling
-- Session memory
-- Text-to-speech
-- Python and TypeScript SDKs
-- Provider-agnostic architecture
+- **Real-Time Voice Streaming**: Duplex WebSocket transport handling raw PCM audio.
+- **Advanced Voice Activity Detection (VAD)**: Integrated Silero Neural VAD with hardware-level noise suppression.
+- **Provider-Agnostic AI Integration**: Seamlessly switch between STT (Groq Whisper), LLMs, and TTS (Piper).
+- **Conversational Engine & Memory**: Advanced session context management capable of preserving user intent across mid-sentence interruptions.
+- **Concurrency Safety**: Strict pipeline management to prevent overlapping TTS voices and race conditions.
 
 ## Architecture Overview
 
 ```mermaid
 flowchart TD
-    app["Application"] --> runtime["VoxCore Runtime"]
-    runtime --> providers["AI Providers"]
+    app["Application (Browser/Client)"] --> runtime["VoxCore Runtime (WebSocket Controller)"]
+    runtime --> memory["Memory Service (Context & State)"]
+    runtime --> providers["AI Providers (STT, LLM, TTS)"]
 
     classDef app fill:#E8F4FF,stroke:#2F80ED,color:#102A43,stroke-width:2px;
     classDef runtime fill:#FFF4CC,stroke:#D99A00,color:#3A2A00,stroke-width:3px;
+    classDef memory fill:#FCE4EC,stroke:#C2185B,color:#4A0024,stroke-width:2px;
     classDef providers fill:#EAF7EA,stroke:#2E7D32,color:#102A12,stroke-width:2px;
 
     class app app;
     class runtime runtime;
+    class memory memory;
     class providers providers;
 ```
 
@@ -70,14 +71,15 @@ make help
 ## Documentation
 
 - [Software Requirements Specification](docs/01-software-requirements-specification.md)
-- System Architecture: planned
-- Module Design: planned
+- [Voice Pipeline Architecture & Flow](docs/02-system-architecture/Voice-Pipeline-Flow.md)
+- [Context Preservation and Concurrency (ADR 004)](docs/06-architecture-decision-records/ADR-004-Context-Preservation-and-Concurrency.md)
+- Module Design: in progress
 - API Reference: planned
 - [Roadmap](ROADMAP.md)
 
 ## Roadmap
 
-VoxCore is in early development; see the [roadmap](ROADMAP.md) for planned releases and long-term direction.
+VoxCore is in active development and has successfully established its core runtime. See the [roadmap](ROADMAP.md) for planned releases and long-term direction.
 
 ## Contributing
 
