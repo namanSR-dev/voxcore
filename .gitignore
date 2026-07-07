@@ -56,4 +56,4 @@ Journal/
 *.bak.md
 
 # Agent Rules
-.agents/
+.agents/*.wav
