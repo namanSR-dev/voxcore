@@ -26,6 +26,9 @@ from voxcore.providers.adapters.groq_adapter import GroqAdapter
 from voxcore.providers.adapters.piper_tts_adapter import PiperTtsAdapter
 from voxcore.providers.adapters.silero_vad_adapter import SileroVadAdapter
 
+from voxcore.storage.adapters.in_memory_store import InMemoryStore
+from voxcore.memory.lifecycle.session_manager import SessionMemoryManager
+
 app = FastAPI(title="VoxCore API", version="1.0.0")
 
 app.add_middleware(
@@ -59,15 +62,19 @@ piper_tts = PiperTtsAdapter(model_path="models/en_US-lessac-medium.onnx")
 # Set threshold to 0.8 to force the neural network to ignore background TVs
 silero_vad = SileroVadAdapter(sample_rate=16000, threshold=0.8)
 
-# 2. Build Core Pipeline
+# 2. Build Memory and Storage
+store = InMemoryStore()
+memory_service = SessionMemoryManager(store)
+
+# 3. Build Core Pipeline
 pipeline = RuntimeExecutionPipeline(
-    context_builder=None, 
+    memory_service=memory_service, 
     provider_registry=DynamicRegistry(groq_adapter)
 )
 gateway = RuntimeGateway(pipeline)
 translator = ExceptionTranslator()
 
-# 3. Build Controllers
+# 4. Build Controllers
 http_controller = HttpController(gateway, translator)
 ws_controller = WebSocketController(
     gateway=gateway,

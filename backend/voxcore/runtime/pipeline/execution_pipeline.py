@@ -6,16 +6,14 @@ Orchestrates the lifecycle of a single execution request.
 from typing import List, Dict, Any
 import re
 from voxcore.contracts.runtime.models import Request, Response
-
-# In-Memory Session Store for Phase 0.4 (To be replaced by Storage Package in Phase 0.6)
-SESSION_STORE: Dict[str, List[Dict[str, str]]] = {}
+from voxcore.contracts.memory.i_memory_service import IMemoryService
 
 class RuntimeExecutionPipeline:
     """
     The core engine that processes prompts, calls providers, and evaluates tool calls.
     """
-    def __init__(self, context_builder: Any, provider_registry: Any) -> None:
-        self.context_builder = context_builder
+    def __init__(self, memory_service: IMemoryService, provider_registry: Any) -> None:
+        self.memory_service = memory_service
         self.provider_registry = provider_registry
 
     async def execute(self, request: Request) -> Response:
@@ -27,29 +25,19 @@ class RuntimeExecutionPipeline:
         if hasattr(provider, "generate_response"):
             user_text = req.payload.get("text", "")
             
-            # 1. Ensure session exists in the memory store
+            # 1. Ensure user message is appended to memory FIRST.
+            # If the task is cancelled during LLM/TTS, the user's message is preserved.
             session_id = req.session_id
-            if session_id not in SESSION_STORE:
-                # Initialize with the system prompt
-                system_prompt = (
-                    "You are VoxCore, an advanced and highly capable Voice AI Assistant. You are the intelligence powering this platform. "
-                    "CRITICAL RULES: "
-                    "1. Keep responses extremely concise, punchy, and conversational (1-2 sentences maximum). "
-                    "2. Do NOT use markdown formatting (no asterisks, no hashes, no brackets). "
-                    "3. Do NOT use emojis. "
-                    "4. Use plain English text only. "
-                    "5. Never say you are an AI language model."
-                )
-                SESSION_STORE[session_id] = [{"role": "system", "content": system_prompt}]
+            await self.memory_service.add_user_message(session_id, user_text)
             
-            # 2. Append the user's new message to the memory
-            SESSION_STORE[session_id].append({"role": "user", "content": user_text})
+            # 2. Build full context window
+            context = await self.memory_service.build_context(session_id)
             
             # 3. Generate response using the full conversation history
-            result_text = await provider.generate_response(SESSION_STORE[session_id])
+            result_text = await provider.generate_response(context)
             
             # 4. Save the AI's response to the memory
-            SESSION_STORE[session_id].append({"role": "assistant", "content": result_text})
+            await self.memory_service.add_assistant_message(session_id, result_text)
             
             # 5. Text Normalization: Strip remaining markdown/symbols just in case
             clean_text = self._normalize_for_tts(result_text)
