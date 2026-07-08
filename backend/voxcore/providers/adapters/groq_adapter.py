@@ -41,6 +41,21 @@ class GroqAdapter(IProvider, ISttProvider):
         )
         return response.choices[0].message.content
 
+    async def generate_response_stream(self, context: Any) -> Any:
+        """
+        Submits a conversational context and streams the text back.
+        """
+        stream = await self.client.chat.completions.create(
+            model=self.llm_model,
+            messages=context,
+            temperature=0.7,
+            max_tokens=1024,
+            stream=True
+        )
+        async for chunk in stream:
+            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content is not None:
+                yield chunk.choices[0].delta.content
+
     async def generate_embeddings(self, text: str) -> List[float]:
         """
         Groq does not natively support embeddings. 

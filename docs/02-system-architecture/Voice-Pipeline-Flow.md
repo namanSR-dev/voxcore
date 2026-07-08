@@ -1,6 +1,6 @@
 # VoxCore Voice Pipeline Architecture
 
-This document provides a comprehensive flowchart and explanation of the VoxCore real-time voice pipeline, detailing audio grouping, concurrency safety, interrupt handling, and memory management.
+This document provides a comprehensive flowchart and explanation of the VoxCore real-time voice pipeline, detailing audio grouping, Smart Interrupts (cough rejection), and real-time sentence streaming.
 
 ## Flowchart
 
@@ -9,7 +9,7 @@ graph TD
     classDef client fill:#3498db,stroke:#2980b9,stroke-width:2px,color:#fff,rx:5px,ry:5px;
     classDef ws fill:#9b59b6,stroke:#8e44ad,stroke-width:2px,color:#fff,rx:5px,ry:5px;
     classDef vad fill:#e67e22,stroke:#d35400,stroke-width:2px,color:#fff,rx:5px,ry:5px;
-    classDef trigger fill:#e74c3c,stroke:#c0392b,stroke-width:2px,color:#fff,rx:5px,ry:5px;
+    classDef stt fill:#e74c3c,stroke:#c0392b,stroke-width:2px,color:#fff,rx:5px,ry:5px;
     classDef interrupt fill:#f1c40f,stroke:#f39c12,stroke-width:2px,color:#333,rx:5px,ry:5px;
     classDef pipeline fill:#2ecc71,stroke:#27ae60,stroke-width:2px,color:#fff,rx:5px,ry:5px;
     classDef memory fill:#1abc9c,stroke:#16a085,stroke-width:2px,color:#fff,rx:5px,ry:5px;
@@ -19,49 +19,50 @@ graph TD
     Client[Browser Microphone Stream<br/>PCM Audio]:::client --> WS[WebSocket Controller<br/>Receives Audio Chunks]:::ws
     WS --> VAD{Silero VAD<br/>is_speech?}:::vad
 
-    %% 2. Interrupt Mechanism
+    %% 2. Smart Interrupt (Initial)
     VAD -- "YES & was_speaking=False" --> IntStart[User Started Speaking]:::interrupt
-    IntStart --> WS_Send[Send 'interrupt' signal to Browser]:::ws
-    IntStart --> Cancel[Cancel Active Pipeline Task]:::interrupt
-    Cancel --> RescueAudio{"Is STT Finished?"}:::interrupt
-    RescueAudio -- "NO" --> MergeAudio[Prepend 'last_audio_processed' to 'audio_buffer']:::ws
-    RescueAudio -- "YES" --> Buffer[Append chunk to 'audio_buffer']:::ws
-    MergeAudio --> Buffer
+    IntStart --> WS_Pause[Send 'pause' signal to Browser]:::ws
+    WS_Pause --> Suspend[Frontend Suspends WebAudio]:::client
+    Suspend --> Buffer[Append chunk to 'audio_buffer']:::ws
 
     VAD -- "YES & was_speaking=True" --> Buffer
 
-    %% 3. Triggers & Concurrency
-    Buffer --> TriggerCheck{Trigger Conditions}:::trigger
-    VAD -- "NO" --> SilenceCheck[Increment Silence Frames]:::trigger
+    %% 3. Triggers
+    Buffer --> TriggerCheck{Trigger Conditions}:::stt
+    VAD -- "NO" --> SilenceCheck[Increment Silence Frames]:::stt
     SilenceCheck --> TriggerCheck
 
-    TriggerCheck -- "Buffer > 30s" --> CancelTrigger[Cancel Active Pipeline Task<br/>Concurrency Safety]:::trigger
-    TriggerCheck -- "Silence > 1.5s" --> CancelTrigger
+    %% 4. STT Phase
+    TriggerCheck -- "Buffer > 30s OR Silence > 1.5s" --> STT[Speech-to-Text<br/>Groq Whisper]:::stt
+    STT --> STT_Result{"Is Transcript Empty?"}:::stt
+
+    %% 5. Smart Decision (Resume vs Interrupt)
+    STT_Result -- "YES (Cough/Noise)" --> WS_Resume[Send 'resume' signal to Browser]:::ws
+    WS_Resume --> Unpause[Frontend Resumes WebAudio]:::client
     
-    CancelTrigger --> RescueAudioTrigger{"Is STT Finished?"}:::trigger
-    RescueAudioTrigger -- "NO" --> MergeAudioTrigger[Prepend 'last_audio_processed']:::ws
-    RescueAudioTrigger -- "YES" --> FinalizeBuffer[Clear buffer & Spawn Async Pipeline Task]:::ws
-    MergeAudioTrigger --> FinalizeBuffer
+    STT_Result -- "NO (Valid Speech)" --> Cancel[Cancel Active LLM Task]:::interrupt
+    Cancel --> WS_Int[Send 'interrupt' signal to Browser]:::ws
+    WS_Int --> Flush[Frontend Flushes Queue & Resumes]:::client
+    Flush --> ExecPipe[Runtime Execution Pipeline]:::pipeline
 
-    %% 4. Process Pipeline
-    FinalizeBuffer --> PipelineStart((Start Async Pipeline Task)):::pipeline
-    PipelineStart --> STT[Speech-to-Text<br/>Groq Whisper]:::pipeline
-    STT --> SetSTTFinished[Set stt_finished=True]:::pipeline
-    SetSTTFinished --> ExecPipe[Runtime Execution Pipeline]:::pipeline
-
-    %% 5. Memory & Context
+    %% 6. Context & Memory
     ExecPipe --> MemSaveUser[IMemoryService<br/>Save User Message]:::memory
-    MemSaveUser --> CtxBuild[ContextBuilder]:::memory
-    CtxBuild --> SysPrompt[Apply System Prompt Wrapper]:::memory
-    SysPrompt --> FullCtx[Assemble Full Conversation History]:::memory
+    MemSaveUser --> CtxBuild[ContextBuilder<br/>Assemble Full History]:::memory
 
-    %% 6. LLM & TTS
-    FullCtx --> LLM[LLM Provider Generates Response]:::llm
-    LLM --> MemSaveAsst[IMemoryService<br/>Save Assistant Message]:::memory
-    MemSaveAsst --> Normalize[Text Normalization<br/>Strip markdown/symbols]:::pipeline
-    Normalize --> TTS[Piper TTS Adapter<br/>Synthesize WAV Audio]:::pipeline
-    TTS --> WSSend[WebSocket Sends WAV to Browser]:::ws
-    WSSend --> ClientPlay[Browser Plays Audio]:::client
+    %% 7. Streaming Sentence Pipeline
+    CtxBuild --> LLM[LLM Token Stream]:::llm
+    LLM --> SentBuf{Sentence Buffer<br/>Check for . ? !}:::pipeline
+    SentBuf -- "No Boundary" --> LLM
+    SentBuf -- "Boundary Found" --> Normalize[Text Normalization<br/>Strip markdown, fix symbols]:::pipeline
+    Normalize --> TTSQueue[Asyncio TTS Queue]:::pipeline
+    
+    %% 8. TTS Worker
+    TTSQueue --> TTS[Piper TTS Adapter<br/>Synthesize WAV Audio]:::pipeline
+    TTS --> WSSend[WebSocket Sends Sentence to Browser]:::ws
+    
+    %% 9. Client Playback Queue
+    WSSend --> ClientQueue[Frontend AudioBuffer Queue]:::client
+    ClientQueue --> Play[Play Sequential Sentences]:::client
 ```
 
 ## Stage-by-Stage Explanation
@@ -71,27 +72,31 @@ graph TD
 - **Silero VAD Gating:** Every chunk is passed through the Silero Neural VAD to determine if human speech is present (`is_speech`). 
 - **Pre-Speech Buffer:** A 5-frame rolling buffer is maintained when the user is silent. The moment speech is detected, these 5 frames are prepended to the main `audio_buffer` to ensure the sharp consonants at the beginning of words (which VAD might miss) are captured.
 
-### 2. The Interrupt Mechanism (Handling Pauses & Stutters)
-- **Detection:** When `is_speech` flips to `True` but the system previously thought the user was silent (`was_speaking = False`), an **Interrupt** occurs. 
-- **Client Signaling:** The server immediately sends an `{"type": "interrupt"}` JSON message to the browser, causing the frontend to halt any currently playing TTS audio.
-- **Task Cancellation:** The server aggressively calls `pipeline_task.cancel()` on any actively running background task.
-- **Audio Rescue:** The system inspects the `PipelineState` of the cancelled task. If the background STT engine *had not finished* transcribing the previous chunk of audio, that audio is fully rescued and prepended to the new `audio_buffer`. This guarantees that if a user pauses for a breath and then continues, the audio is perfectly concatenated at the binary level, never losing a word.
+### 2. Smart Interrupts (The "Cough" Fix)
+VoxCore uses a highly intelligent, non-destructive interrupt mechanism identical to top-tier voice AI systems (like Gemini Live).
+- **Instant Suspension:** The millisecond you make a noise (`is_speech = True`), the server sends a `{"type": "pause"}` signal to the browser. The browser instantly suspends its `AudioContext`, freezing the AI mid-word.
+- **The Decision Phase:** Once you stop making noise (silence > 1.5s), the server transcribes your audio. 
+  - **False Alarm:** If the transcript is empty (a cough or throat clear), the server realizes it was a false alarm. It sends a `{"type": "resume"}` signal. The browser seamlessly resumes the audio exactly where it paused, and the backend AI task was never interrupted!
+  - **True Interrupt:** If the transcript contains valid speech, the server officially cancels the running AI task, sends an `{"type": "interrupt"}` to flush the browser's audio queue, and generates a new response.
 
-### 3. Triggers & Concurrency Safety
+### 3. Concurrency Safety
 Audio is transcribed under two strict conditions:
 1. **Silence Trigger:** The user has stopped speaking for 1.5 seconds (`MAX_SILENCE_FRAMES = 12`).
 2. **Safety Cutoff Trigger:** The user has spoken continuously for 30 seconds (`MAX_AUDIO_BYTES = 960000`).
-- **Concurrency Safety:** To prevent the "dual overlapping voices" bug, whenever a trigger is hit, the WebSocket strictly cancels any previously running background task. This ensures only *one* LLM generation and *one* TTS synthesis occurs at a time, no matter how long the user talks.
+If the user starts a *second* sentence while the STT engine is still processing the *first* sentence, the system automatically cancels the old STT task and merges the audio buffers to prevent fragmentation.
 
 ### 4. Memory & Context Feature
-Once the STT engine (`Groq Whisper`) returns a transcript, the text enters the `RuntimeExecutionPipeline`.
 - **Memory Storage:** The transcript is synchronously committed to the `InMemoryStore` via the `IMemoryService`.
-- **ContextBuilder & System Prompt Wrapper:** The `ContextBuilder` dynamically pulls the last 10 turns of the conversation and prepends the hardcoded System Prompt (the wrapper that dictates the AI's persona and rules: *"You are an expert AI voice assistant..."*). 
-- **Full History:** The LLM receives an array of messages representing the entire chronological conversation. This is why the AI behaves expertly and remembers previously discussed concepts without repeating them.
+- **ContextBuilder:** Dynamically pulls the last 10 turns of the conversation and prepends the hardcoded System Prompt (the wrapper that dictates the AI's persona and rules). 
+- **Full History:** The LLM receives an array of messages representing the entire chronological conversation, allowing it to remember past concepts naturally.
 
-### 5. LLM Generation & TTS Synthesis
-- **LLM Engine:** The LLM provider reads the complete assembled context and streams or generates its response. 
-- **Memory Commitment:** The AI's generated response is immediately saved back into the `IMemoryService` so future turns remember this answer.
-- **Text Normalization:** Because text goes to a voice engine, the `ExecutionPipeline` strips markdown (like `*`, `**`, `[links]`) which would otherwise confuse the TTS model.
-- **Text-to-Speech:** The normalized text is passed to the `PiperTtsAdapter`, which synthesizes the text into a complete `.wav` file payload.
-- **Delivery:** The `.wav` binary payload is sent down the WebSocket to the browser, where it is converted into an audio blob and played to the user.
+### 5. Sentence Chunking & Streaming
+VoxCore eliminates the "wait 15 seconds for a response" problem by aggressively streaming text to speech.
+- **Token Buffering:** The `RuntimeExecutionPipeline` listens to raw tokens coming from Groq. It buffers them into a string until it detects a punctuation boundary (`.`, `?`, `!`).
+- **Normalization:** The exact sentence is passed through `_normalize_for_tts()`, which scrubs markdown, expands symbols (like `&` to `and`), and formats number ranges (`5-10` to `5 to 10`) so the TTS engine speaks fluently.
+- **Concurrent Queues:** The sentence is pushed to an `asyncio.Queue`. A dedicated background `_tts_worker` immediately synthesizes it with Piper and sends the WAV file to the browser. 
+- **The Result:** While you are listening to Sentence 1, the LLM is generating Sentence 2 in the background, resulting in sub-second response times!
+
+### 6. Seamless Playback 
+- **Frontend Queueing:** When WAV files arrive at the browser, they aren't played blindly. The `VoxCoreClient` places them into a strict sequential array (`audioQueue`).
+- **Gapless Audio:** The `onended` event of the WebAudio source node immediately pops the next sentence from the queue. This guarantees perfect, non-overlapping speech with absolutely zero unnatural gaps between sentences.

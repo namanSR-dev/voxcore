@@ -14,6 +14,8 @@ class VoxCoreClient {
         this.mediaStream = null;
         this.workletNode = null;
         this.currentPlaySource = null;
+        this.audioQueue = [];
+        this.isPlaying = false;
         
         // Callbacks
         this.onStateChange = (state) => {};
@@ -118,27 +120,54 @@ class VoxCoreClient {
         if (typeof event.data === "string") {
             try {
                 const msg = JSON.parse(event.data);
-                if (msg.type === "interrupt") {
+                if (msg.type === "pause") {
+                    if (this.playAudioContext && this.playAudioContext.state === 'running') {
+                        this.playAudioContext.suspend();
+                        this.onStateChange("Paused (Smart Interrupt)...");
+                    }
+                } else if (msg.type === "resume") {
+                    if (this.playAudioContext && this.playAudioContext.state === 'suspended') {
+                        this.playAudioContext.resume();
+                        this.onStateChange("AI is speaking...");
+                    }
+                } else if (msg.type === "interrupt") {
+                    this.audioQueue = []; // Clear queue on interrupt
                     if (this.currentPlaySource) {
                         this.currentPlaySource.stop();
                         this.currentPlaySource = null;
                     }
+                    if (this.playAudioContext && this.playAudioContext.state === 'suspended') {
+                        this.playAudioContext.resume(); // Ensure it is running again for future audio
+                    }
+                    this.isPlaying = false;
                     this.onAiSpeaking(false);
                     this.onStateChange("Interrupted. Listening...");
+                } else if (msg.type === "tts_text") {
+                    console.log(`[Queueing Sentence] ${msg.text}`);
+                    this.onStateChange(`Queueing: ${msg.text}`);
                 }
             } catch(e) {}
             return;
         }
 
         // Handle Audio Playback
-        this.onAiSpeaking(true);
-        this.onStateChange("AI is speaking...");
-        
         if (this.playAudioContext.state === 'suspended') {
             await this.playAudioContext.resume();
         }
         
         const audioBuffer = await this.playAudioContext.decodeAudioData(event.data);
+        this.audioQueue.push(audioBuffer);
+        this._playNextInQueue();
+    }
+    
+    _playNextInQueue() {
+        if (this.isPlaying || this.audioQueue.length === 0) return;
+        
+        this.isPlaying = true;
+        this.onAiSpeaking(true);
+        this.onStateChange("AI is speaking...");
+        
+        const audioBuffer = this.audioQueue.shift();
         const playSource = this.playAudioContext.createBufferSource();
         playSource.buffer = audioBuffer;
         playSource.connect(this.playAudioContext.destination);
@@ -147,8 +176,12 @@ class VoxCoreClient {
         playSource.start(0);
 
         playSource.onended = () => {
-            if (this.currentPlaySource === playSource) {
-                this.currentPlaySource = null;
+            this.isPlaying = false;
+            this.currentPlaySource = null;
+            
+            if (this.audioQueue.length > 0) {
+                this._playNextInQueue();
+            } else {
                 this.onAiSpeaking(false);
                 this.onStateChange("Connected. Listening...");
             }

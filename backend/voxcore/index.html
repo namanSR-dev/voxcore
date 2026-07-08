@@ -79,7 +79,7 @@
     </div>
 
     <!-- Import the official VoxCore Client SDK -->
-    <script src="/static/voxcore-client.js"></script>
+    <script src="/static/voxcore-client.js?v=2"></script>
 
     <script>
         const btnConnect = document.getElementById('btn-connect');
@@ -90,6 +90,9 @@
         let client = null;
 
         btnConnect.addEventListener('click', async () => {
+            btnConnect.disabled = true;
+            btnConnect.innerText = "Connecting...";
+            
             const wsUrl = `ws://${window.location.host}/v1/voice`;
             client = new VoxCoreClient(wsUrl);
 
@@ -103,6 +106,8 @@
                     appContainer.classList.add("mic-active");
                 } else if (state.includes("Disconnected")) {
                     btnConnect.style.display = 'block';
+                    btnConnect.disabled = false;
+                    btnConnect.innerText = "Connect Microphone";
                     btnDisconnect.style.display = 'none';
                     appContainer.classList.remove("mic-active");
                 }

@@ -52,14 +52,49 @@ class WebSocketController:
         MIN_AUDIO_BYTES = 16000 # Minimum 0.5s of audio to process
         MAX_AUDIO_BYTES = 960000 # Maximum 30 seconds of audio buffer (16000hz * 2 bytes * 30s)
         
-        # Keep track of the currently running pipeline task so we can interrupt it
+        # Keep track of the currently running tasks
         import asyncio
         import time
         pipeline_task = None
-        pipeline_state = None
+        stt_task = None
         last_audio_processed = b""
         was_speaking = False
         
+        async def process_utterance(audio_bytes: bytes):
+            nonlocal pipeline_task
+            try:
+                transcript = await self.stt.transcribe(audio_bytes)
+                if not transcript or not transcript.strip():
+                    print(f"[{time.strftime('%H:%M:%S')}] STT returned empty (cough/noise). Resuming AI audio...")
+                    try:
+                        await websocket.send_text('{"type": "resume"}')
+                    except Exception:
+                        pass
+                    return
+                
+                # Valid speech detected!
+                print(f"[{time.strftime('%H:%M:%S')}] Valid speech transcribed: '{transcript}'")
+                
+                # 1. Send interrupt to frontend to clear the queue
+                try:
+                    await websocket.send_text('{"type": "interrupt"}')
+                except Exception:
+                    pass
+                
+                # 2. Cancel active LLM task if any
+                if pipeline_task and not pipeline_task.done():
+                    print(f"[{time.strftime('%H:%M:%S')}] Canceling previous AI generation...")
+                    pipeline_task.cancel()
+                    
+                # 3. Start new LLM task
+                pipeline_task = asyncio.create_task(
+                    self._process_llm_tts_task(websocket, transcript.strip(), connection_id)
+                )
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                print(f"Error in process_utterance: {e}")
+
         frame_count = 0
         import numpy as np
         
@@ -84,23 +119,18 @@ class WebSocketController:
                             was_speaking = True
                             print(f"\n[{time.strftime('%H:%M:%S')}] User started speaking...")
                             
-                            # 1. ALWAYS send the interrupt signal to the browser when the user starts speaking.
+                            # 1. ALWAYS send the PAUSE signal to the browser when the user starts speaking.
                             try:
-                                await websocket.send_text('{"type": "interrupt"}')
+                                await websocket.send_text('{"type": "pause"}')
                             except Exception:
                                 pass
                             
-                            # 2. If the AI is currently processing on the server, cancel it
-                            if pipeline_task and not pipeline_task.done():
-                                print(f"[{time.strftime('%H:%M:%S')}] INTERRUPT: Canceling AI generation...")
-                                pipeline_task.cancel()
-                                
-                                # If STT hasn't finished, the audio chunk wasn't transcribed!
-                                # We must restore it to the buffer so it's not lost.
-                                if pipeline_state and not pipeline_state.stt_finished and last_audio_processed:
-                                    new_buffer = bytearray(last_audio_processed)
-                                    new_buffer.extend(audio_buffer)
-                                    audio_buffer = new_buffer
+                            # 2. If STT is currently processing the previous chunk, cancel it and rescue audio
+                            if stt_task and not stt_task.done():
+                                stt_task.cancel()
+                                new_buffer = bytearray(last_audio_processed)
+                                new_buffer.extend(audio_buffer)
+                                audio_buffer = new_buffer
                                 
                         # Prepend the pre-speech buffer
                         if len(audio_buffer) == 0:
@@ -113,21 +143,16 @@ class WebSocketController:
                         silence_frames = 0
                         
                         # 3. Maximum Buffer Cutoff (Safety Limit)
-                        # If the user has been talking continuously for 30 seconds, force process the chunk!
                         if len(audio_buffer) >= MAX_AUDIO_BYTES:
                             print(f"[{time.strftime('%H:%M:%S')}] Max buffer limit reached. Processing audio...")
-                            if pipeline_task and not pipeline_task.done():
-                                pipeline_task.cancel()
-                                if pipeline_state and not pipeline_state.stt_finished and last_audio_processed:
-                                    new_buffer = bytearray(last_audio_processed)
-                                    new_buffer.extend(audio_buffer)
-                                    audio_buffer = new_buffer
+                            if stt_task and not stt_task.done():
+                                stt_task.cancel()
+                                new_buffer = bytearray(last_audio_processed)
+                                new_buffer.extend(audio_buffer)
+                                audio_buffer = new_buffer
                                     
                             last_audio_processed = bytes(audio_buffer)
-                            pipeline_state = PipelineState()
-                            pipeline_task = asyncio.create_task(
-                                self._process_pipeline_task(websocket, last_audio_processed, connection_id, pipeline_state)
-                            )
+                            stt_task = asyncio.create_task(process_utterance(last_audio_processed))
                             audio_buffer.clear()
                     else:
                         if len(audio_buffer) == 0:
@@ -143,19 +168,15 @@ class WebSocketController:
                             if silence_frames >= MAX_SILENCE_FRAMES:
                                 was_speaking = False
                                 if len(audio_buffer) >= MIN_AUDIO_BYTES:
-                                    if pipeline_task and not pipeline_task.done():
-                                        pipeline_task.cancel()
-                                        if pipeline_state and not pipeline_state.stt_finished and last_audio_processed:
-                                            new_buffer = bytearray(last_audio_processed)
-                                            new_buffer.extend(audio_buffer)
-                                            audio_buffer = new_buffer
+                                    if stt_task and not stt_task.done():
+                                        stt_task.cancel()
+                                        new_buffer = bytearray(last_audio_processed)
+                                        new_buffer.extend(audio_buffer)
+                                        audio_buffer = new_buffer
                                             
-                                    # Fire-and-forget the pipeline so we can keep listening
+                                    # Fire-and-forget STT processing
                                     last_audio_processed = bytes(audio_buffer)
-                                    pipeline_state = PipelineState()
-                                    pipeline_task = asyncio.create_task(
-                                        self._process_pipeline_task(websocket, last_audio_processed, connection_id, pipeline_state)
-                                    )
+                                    stt_task = asyncio.create_task(process_utterance(last_audio_processed))
                                     
                                 # Clear the buffer for the next utterance
                                 audio_buffer.clear()
@@ -170,68 +191,70 @@ class WebSocketController:
         except WebSocketDisconnect:
             print("Client disconnected.")
             
-    async def _process_pipeline_task(self, websocket: WebSocket, audio_bytes: bytes, connection_id: str, state: PipelineState | None = None) -> None:
-        """Runs the STT -> LLM -> TTS pipeline asynchronously with diagnostic timestamps."""
+    async def _process_llm_tts_task(self, websocket: WebSocket, transcript: str, connection_id: str) -> None:
+        """Runs the LLM -> TTS pipeline asynchronously with diagnostic timestamps."""
         import asyncio
         import time
         import uuid
-        import numpy as np
         from voxcore.contracts.runtime.models import Request
         
         start_t = time.time()
-        print(f"[{0.00:.2f}s] Pipeline started...")
+        print(f"[{0.00:.2f}s] LLM Pipeline started for transcript: '{transcript}'")
         
-        # Remove backend normalizer. The browser's autoGainControl is already active, 
-        # and double-amplifying causes ceiling fan noise to explode to 10x volume.
         try:
-            # DEBUG: Save the exact audio being sent to Whisper so the user can verify it!
-            import wave
-            import os
-            debug_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug_whisper_input.wav")
-            with wave.open(debug_path, 'wb') as wf:
-                wf.setnchannels(1)
-                wf.setsampwidth(2)
-                wf.setframerate(16000)
-                wf.writeframes(audio_bytes)
-            print(f"[DEBUG] Saved exact audio to: {debug_path}")
-            
-        except Exception as e:
-            print(f"[DEBUG] Normalization/Debug export failed: {e}")
-            
-        try:
-            # 1. Speech-to-Text
-            transcript = await self.stt.transcribe(audio_bytes)
-            if state is not None:
-                state.stt_finished = True
-                
-            stt_t = time.time()
-            print(f"[{stt_t - start_t:.2f}s] STT Transcribed: '{transcript}'")
-            
-            if not transcript or not transcript.strip():
-                return
-                
-            # 2. LLM Execution via Gateway
+            # 2. LLM Execution via Gateway (Streaming)
             req = Request(
                 id=str(uuid.uuid4()),
                 session_id=connection_id,
                 payload={"text": transcript.strip()}
             )
-            resp = await self.gateway.submit_request(req)
-            llm_text = resp.output.get("text", "")
-            llm_t = time.time()
-            print(f"[{llm_t - start_t:.2f}s] LLM Responded: '{llm_text}'")
             
-            if not llm_text:
-                return
-                
-            # 3. Text-to-Speech
-            audio_resp = await self.tts.synthesize(llm_text)
-            tts_t = time.time()
-            print(f"[{tts_t - start_t:.2f}s] TTS Synthesized audio.")
+            sentence_queue = asyncio.Queue()
+            tts_task = None
             
-            # 4. Send to client
-            await websocket.send_bytes(audio_resp)
-            print(f"[{time.time() - start_t:.2f}s] Sent audio to browser.")
+            async def _tts_worker():
+                first_chunk = True
+                while True:
+                    sentence = await sentence_queue.get()
+                    if sentence is None:
+                        sentence_queue.task_done()
+                        break
+                        
+                    tts_start = time.time()
+                    print(f"[{tts_start - start_t:.2f}s] [TTS START] Synthesizing: '{sentence}'")
+                    audio_resp = await self.tts.synthesize(sentence)
+                    tts_end = time.time()
+                    print(f"[{tts_end - start_t:.2f}s] [TTS DONE] Took {tts_end - tts_start:.2f}s: '{sentence}'")
+                    
+                    if first_chunk:
+                        first_chunk = False
+                        
+                    # Tell frontend which text is about to play
+                    try:
+                        await websocket.send_text(f'{{"type": "tts_text", "text": {repr(sentence)}}}')
+                    except Exception:
+                        pass
+                        
+                    await websocket.send_bytes(audio_resp)
+                    sentence_queue.task_done()
+            
+            # Start the TTS worker in the background
+            tts_task = asyncio.create_task(_tts_worker())
+            
+            try:
+                # 3. Stream sentences from LLM and push to TTS queue
+                async for sentence in self.gateway.submit_request_stream(req):
+                    print(f"[{time.time() - start_t:.2f}s] LLM Yielded Sentence: '{sentence}'")
+                    await sentence_queue.put(sentence)
+                    
+                # Signal the worker that we are done
+                await sentence_queue.put(None)
+                await tts_task
+            except asyncio.CancelledError:
+                # If the pipeline is interrupted by user speaking, cancel the TTS worker immediately
+                if tts_task and not tts_task.done():
+                    tts_task.cancel()
+                raise
             
         except asyncio.CancelledError:
             print(f"[{time.time() - start_t:.2f}s] Task was interrupted and cancelled.")

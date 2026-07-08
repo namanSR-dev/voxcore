@@ -19,6 +19,14 @@ class IProvider(ABC):
         pass
 
     @abstractmethod
+    async def generate_response_stream(self, context: Any) -> Any:
+        """
+        Submits the assembled context and yields tokens as they are generated.
+        Returns an AsyncGenerator[str, None].
+        """
+        pass
+
+    @abstractmethod
     async def generate_embeddings(self, text: str) -> List[float]:
         """
         Requests vector embeddings for the provided text.

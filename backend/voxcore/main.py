@@ -64,7 +64,10 @@ silero_vad = SileroVadAdapter(sample_rate=16000, threshold=0.8)
 
 # 2. Build Memory and Storage
 store = InMemoryStore()
-memory_service = SessionMemoryManager(store)
+from voxcore.memory.composition.context_builder import ContextBuilder
+client_persona = "You are a friendly technical mentor explaining Voice AI to a university student."
+builder = ContextBuilder(client_prompt=client_persona)
+memory_service = SessionMemoryManager(store, context_builder=builder)
 
 # 3. Build Core Pipeline
 pipeline = RuntimeExecutionPipeline(
