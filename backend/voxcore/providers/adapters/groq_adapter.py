@@ -23,7 +23,7 @@ class GroqAdapter(IProvider, ISttProvider):
             raise ValueError("GROQ_API_KEY environment variable is not set.")
             
         self.client = AsyncGroq(api_key=api_key)
-        self.llm_model = "llama-3.1-8b-instant"
+        self.llm_model = "llama-3.3-70b-versatile"
         self.stt_model = "whisper-large-v3"
 
     async def generate_response(self, context: Any) -> Any:
@@ -41,20 +41,86 @@ class GroqAdapter(IProvider, ISttProvider):
         )
         return response.choices[0].message.content
 
-    async def generate_response_stream(self, context: Any) -> Any:
+    async def generate_response_stream(self, context: Any, tools: List[dict] | None = None) -> Any:
         """
         Submits a conversational context and streams the text back.
+        If tools are provided, it can yield a tool_call dict instead of text.
         """
-        stream = await self.client.chat.completions.create(
-            model=self.llm_model,
-            messages=context,
-            temperature=0.7,
-            max_tokens=1024,
-            stream=True
-        )
-        async for chunk in stream:
-            if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content is not None:
-                yield chunk.choices[0].delta.content
+        kwargs = {
+            "model": self.llm_model,
+            "messages": context,
+            "temperature": 0.7,
+            "max_tokens": 1024,
+            "stream": True
+        }
+        
+        if tools and len(tools) > 0:
+            # Format according to OpenAI/Groq spec
+            formatted_tools = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": t["name"],
+                        "description": t.get("description", ""),
+                        "parameters": t.get("parameters", {"type": "object", "properties": {}})
+                    }
+                } for t in tools
+            ]
+            kwargs["tools"] = formatted_tools
+            kwargs["tool_choice"] = "auto"
+
+        try:
+            stream = await self.client.chat.completions.create(**kwargs)
+            
+            tool_calls_accumulator = {}
+            
+            async for chunk in stream:  # type: ignore
+                if not chunk.choices:
+                    continue
+                    
+                delta = chunk.choices[0].delta
+                
+                # 1. Handle normal text content
+                if delta.content is not None:
+                    yield delta.content
+                    
+                # 2. Accumulate tool calls if present
+                if delta.tool_calls:
+                    for tc in delta.tool_calls:
+                        idx = tc.index
+                        if idx not in tool_calls_accumulator:
+                            tool_calls_accumulator[idx] = {
+                                "id": getattr(tc, "id", None),
+                                "name": "",
+                                "arguments": ""
+                            }
+                        
+                        if getattr(tc, "id", None) and not tool_calls_accumulator[idx]["id"]:
+                            tool_calls_accumulator[idx]["id"] = tc.id
+                        
+                        if tc.function:
+                            if tc.function.name:
+                                tool_calls_accumulator[idx]["name"] += tc.function.name
+                            if tc.function.arguments:
+                                tool_calls_accumulator[idx]["arguments"] += tc.function.arguments
+                                
+            # 3. Yield any fully assembled tool calls after the stream ends
+            for idx, tc in tool_calls_accumulator.items():
+                # Groq sometimes doesn't send an ID if it's hallucinating, but we need one
+                import uuid
+                call_id = tc["id"] if tc.get("id") else f"call_{uuid.uuid4().hex[:8]}"
+                yield {
+                    "type": "tool_call",
+                    "id": call_id,
+                    "name": tc["name"],
+                    "arguments": tc["arguments"]
+                }
+        except Exception as e:
+            if "APIError" in str(type(e)):
+                print(f"Groq API Error caught gracefully: {str(e)}")
+                yield "I'm sorry, I ran into a bit of trouble figuring that out. Could you clarify what you need?"
+            else:
+                raise e
 
     async def generate_embeddings(self, text: str) -> List[float]:
         """

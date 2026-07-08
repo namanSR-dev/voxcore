@@ -17,10 +17,87 @@ class VoxCoreClient {
         this.audioQueue = [];
         this.isPlaying = false;
         
+        // Tool Registry
+        this.registeredTools = {};
+        
         // Callbacks
         this.onStateChange = (state) => {};
         this.onAiSpeaking = (isSpeaking) => {};
         this.onError = (err) => {};
+    }
+
+    registerTool(config) {
+        if (!config.name || !config.execute) {
+            console.error("Tool registration requires a 'name' and 'execute' function.");
+            return;
+        }
+        this.registeredTools[config.name] = config;
+    }
+
+    registerTools(configArray) {
+        for (const config of configArray) {
+            this.registerTool(config);
+        }
+    }
+
+    getToolSchemas() {
+        return Object.values(this.registeredTools).map(tool => {
+            return {
+                name: tool.name,
+                description: tool.description || "",
+                parameters: tool.parameters || { type: "object", properties: {} }
+            };
+        });
+    }
+
+    async _executeTool(name, argsStr) {
+        let args = {};
+        try {
+            if (argsStr && typeof argsStr === 'string') {
+                args = JSON.parse(argsStr);
+            } else if (argsStr && typeof argsStr === 'object') {
+                args = argsStr;
+            }
+        } catch (e) {
+            this.ws.send(JSON.stringify({
+                type: "tool_result",
+                name: name,
+                result: `ERROR: Invalid arguments JSON provided: ${e.message}`
+            }));
+            return;
+        }
+
+        const tool = this.registeredTools[name];
+        if (!tool) {
+            this.ws.send(JSON.stringify({
+                type: "tool_result",
+                name: name,
+                result: `ERROR: Tool '${name}' is not registered on the client.`
+            }));
+            return;
+        }
+
+        try {
+            // Note: In a full SDK, we would do strict JSON Schema validation here.
+            // For now, we rely on the LLM to adhere to the schema, and catch runtime execution errors.
+            let result = await tool.execute(args);
+            if (result === undefined) result = "Success";
+            
+            // Ensure result is a string before sending
+            const resultStr = typeof result === 'object' ? JSON.stringify(result) : String(result);
+            
+            this.ws.send(JSON.stringify({
+                type: "tool_result",
+                name: name,
+                result: resultStr
+            }));
+        } catch (e) {
+            this.ws.send(JSON.stringify({
+                type: "tool_result",
+                name: name,
+                result: `ERROR executing tool: ${e.message}`
+            }));
+        }
     }
 
     async connect() {
@@ -50,6 +127,16 @@ class VoxCoreClient {
 
             this.ws.onopen = async () => {
                 this.onStateChange("Connected. Listening...");
+                
+                // Send registered tools to the backend
+                const schemas = this.getToolSchemas();
+                if (schemas.length > 0) {
+                    this.ws.send(JSON.stringify({
+                        type: "register_tools",
+                        tools: schemas
+                    }));
+                }
+                
                 await this._setupAudioWorklet();
             };
 
@@ -145,8 +232,14 @@ class VoxCoreClient {
                 } else if (msg.type === "tts_text") {
                     console.log(`[Queueing Sentence] ${msg.text}`);
                     this.onStateChange(`Queueing: ${msg.text}`);
+                } else if (msg.type === "tool_call") {
+                    console.log(`[Tool Call Received] ${msg.name}`, msg.arguments);
+                    this.onStateChange(`Executing Tool: ${msg.name}...`);
+                    await this._executeTool(msg.name, msg.arguments);
                 }
-            } catch(e) {}
+            } catch(e) {
+                console.error("Error parsing message", e);
+            }
             return;
         }
 

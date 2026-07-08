@@ -60,6 +60,11 @@ class WebSocketController:
         last_audio_processed = b""
         was_speaking = False
         
+        # Tool State
+        session_tools = []
+        tool_result_event = asyncio.Event()
+        last_tool_result = [None] # Array so it can be mutated inside process_utterance
+
         async def process_utterance(audio_bytes: bytes):
             nonlocal pipeline_task
             try:
@@ -88,7 +93,14 @@ class WebSocketController:
                     
                 # 3. Start new LLM task
                 pipeline_task = asyncio.create_task(
-                    self._process_llm_tts_task(websocket, transcript.strip(), connection_id)
+                    self._process_llm_tts_task(
+                        websocket, 
+                        transcript.strip(), 
+                        connection_id,
+                        session_tools,
+                        tool_result_event,
+                        last_tool_result
+                    )
                 )
             except asyncio.CancelledError:
                 pass
@@ -97,12 +109,38 @@ class WebSocketController:
 
         frame_count = 0
         import numpy as np
+        import json
         
         try:
             while True:
                 try:
+                    # Read any message type (bytes or text)
+                    message = await websocket.receive()
+                    
+                    if message.get("type") == "websocket.disconnect":
+                        raise WebSocketDisconnect(message.get("code", 1000))
+                        
+                    if "text" in message:
+                        # Handle JSON messages from the client
+                        try:
+                            data = json.loads(message["text"])
+                            msg_type = data.get("type")
+                            if msg_type == "register_tools":
+                                session_tools = data.get("tools", [])
+                                print(f"[{time.strftime('%H:%M:%S')}] Registered {len(session_tools)} tools.")
+                            elif msg_type == "tool_result":
+                                print(f"[{time.strftime('%H:%M:%S')}] Received tool result for '{data.get('name')}'")
+                                last_tool_result[0] = data
+                                tool_result_event.set()
+                        except json.JSONDecodeError:
+                            pass
+                        continue
+                        
+                    if "bytes" not in message:
+                        continue
+                        
                     # 1. Receive binary audio chunk from the microphone stream
-                    chunk = await websocket.receive_bytes()
+                    chunk = message["bytes"]
                     
                     frame_count += 1
                     samples = np.frombuffer(chunk, dtype=np.int16)
@@ -191,12 +229,13 @@ class WebSocketController:
         except WebSocketDisconnect:
             print("Client disconnected.")
             
-    async def _process_llm_tts_task(self, websocket: WebSocket, transcript: str, connection_id: str) -> None:
+    async def _process_llm_tts_task(self, websocket: WebSocket, transcript: str, connection_id: str, session_tools: list, tool_result_event, last_tool_result) -> None:
         """Runs the LLM -> TTS pipeline asynchronously with diagnostic timestamps."""
         import asyncio
         import time
         import uuid
         from voxcore.contracts.runtime.models import Request
+        import json
         
         start_t = time.time()
         print(f"[{0.00:.2f}s] LLM Pipeline started for transcript: '{transcript}'")
@@ -206,7 +245,7 @@ class WebSocketController:
             req = Request(
                 id=str(uuid.uuid4()),
                 session_id=connection_id,
-                payload={"text": transcript.strip()}
+                payload={"text": transcript.strip(), "tools": session_tools}
             )
             
             sentence_queue = asyncio.Queue()
@@ -242,10 +281,36 @@ class WebSocketController:
             tts_task = asyncio.create_task(_tts_worker())
             
             try:
-                # 3. Stream sentences from LLM and push to TTS queue
-                async for sentence in self.gateway.submit_request_stream(req):
-                    print(f"[{time.time() - start_t:.2f}s] LLM Yielded Sentence: '{sentence}'")
-                    await sentence_queue.put(sentence)
+                # 3. Stream sentences and tools from LLM
+                generator = self.gateway.submit_request_stream(req)
+                
+                # Start the generator
+                item = await generator.asend(None)
+                
+                while True:
+                    try:
+                        if isinstance(item, dict) and item.get("type") == "tool_call":
+                            print(f"[{time.time() - start_t:.2f}s] LLM Yielded Tool Call: {item['name']}")
+                            # Send to client to execute
+                            await websocket.send_text(json.dumps(item))
+                            
+                            # Wait for client to send back the tool_result
+                            await tool_result_event.wait()
+                            tool_result_event.clear()
+                            
+                            # Pass the result back into the generator to resume
+                            # .asend() will cause the 'yield tc' inside execution_pipeline to return last_tool_result[0]
+                            result_data = last_tool_result[0]
+                            item = await generator.asend(result_data)
+                        else:
+                            # It's a text sentence
+                            print(f"[{time.time() - start_t:.2f}s] LLM Yielded Sentence: '{item}'")
+                            await sentence_queue.put(item)
+                            
+                            # Advance generator
+                            item = await generator.asend(None)
+                    except StopAsyncIteration:
+                        break
                     
                 # Signal the worker that we are done
                 await sentence_queue.put(None)

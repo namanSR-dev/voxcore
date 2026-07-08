@@ -16,9 +16,9 @@ class RuntimeGateway:
     async def submit_request(self, request: Request) -> Response:
         return await self.pipeline.execute(request)
 
-    async def submit_request_stream(self, request: Request):
+    def submit_request_stream(self, request: Request):
         """
         Submits a request and yields the generated sentences sequentially.
+        Returns the generator directly so that .asend() payloads reach the pipeline.
         """
-        async for sentence in self.pipeline.execute_stream(request):
-            yield sentence
+        return self.pipeline.execute_stream(request)

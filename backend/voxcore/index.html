@@ -95,6 +95,23 @@
             
             const wsUrl = `ws://${window.location.host}/v1/voice`;
             client = new VoxCoreClient(wsUrl);
+            
+            // Register a dummy tool for testing
+            client.registerTool({
+                name: "get_weather",
+                description: "Get the current weather for a city.",
+                parameters: {
+                    type: "object",
+                    properties: {
+                        city: { type: "string", description: "The city to get weather for" }
+                    },
+                    required: ["city"]
+                },
+                execute: async (args) => {
+                    console.log("[Tool Execution] get_weather called with args:", args);
+                    return `The weather in ${args.city} is sunny and 75 degrees.`;
+                }
+            });
 
             // Bind UI events to the SDK callbacks
             client.onStateChange = (state) => {

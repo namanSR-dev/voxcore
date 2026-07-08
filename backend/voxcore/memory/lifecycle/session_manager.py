@@ -44,8 +44,34 @@ class SessionMemoryManager(IMemoryService):
         """
         Records the AI's final response in the conversation history.
         """
-        if content.strip():
+        if content and content.strip():
             await self.store.append_turn(session_id, role="assistant", content=content.strip())
+
+    async def add_tool_call(self, session_id: str, tool_name: str, arguments: str, tool_call_id: str = "call_xyz") -> None:
+        """
+        Records that the AI called a tool.
+        """
+        metadata = {
+            "tool_calls": [{
+                "id": tool_call_id,
+                "type": "function",
+                "function": {
+                    "name": tool_name,
+                    "arguments": arguments
+                }
+            }]
+        }
+        await self.store.append_turn(session_id, role="assistant", content="", metadata=metadata)
+
+    async def add_tool_result(self, session_id: str, tool_name: str, result: str, tool_call_id: str = "call_xyz") -> None:
+        """
+        Records the result of a tool execution.
+        """
+        metadata = {
+            "name": tool_name,
+            "tool_call_id": tool_call_id
+        }
+        await self.store.append_turn(session_id, role="tool", content=result, metadata=metadata)
 
     async def build_context(self, session_id: str) -> List[Dict[str, str]]:
         """

@@ -1,4 +1,4 @@
-from typing import List, Dict
+from typing import List, Dict, Any
 from datetime import datetime, timezone
 from voxcore.contracts.storage.i_store import IStore, ConversationTurn
 
@@ -12,7 +12,7 @@ class InMemoryStore(IStore):
         # Dictionary mapping session_id -> List[ConversationTurn]
         self._sessions: Dict[str, List[ConversationTurn]] = {}
 
-    async def append_turn(self, session_id: str, role: str, content: str) -> None:
+    async def append_turn(self, session_id: str, role: str, content: str, metadata: Dict[str, Any] | None = None) -> None:
         """
         Appends a new turn to the session's conversation history in RAM.
         """
@@ -22,7 +22,8 @@ class InMemoryStore(IStore):
         turn = ConversationTurn(
             role=role,
             content=content,
-            timestamp=datetime.now(timezone.utc)
+            timestamp=datetime.now(timezone.utc),
+            metadata=metadata
         )
         self._sessions[session_id].append(turn)
 

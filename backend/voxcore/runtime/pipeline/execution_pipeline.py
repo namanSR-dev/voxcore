@@ -49,7 +49,8 @@ class RuntimeExecutionPipeline:
     async def execute_stream(self, request: Request) -> Any:
         """
         Runs the request through the pipeline, yielding complete sentences as they are generated.
-        Yields fully normalized strings.
+        Yields fully normalized strings, or tool_call dicts.
+        Accepts tool_results back via .asend(tool_result).
         """
         req = await self._run_middleware(request)
         provider = self._select_provider(req)
@@ -61,46 +62,91 @@ class RuntimeExecutionPipeline:
             
         user_text = req.payload.get("text", "")
         session_id = req.session_id
+        tools = req.payload.get("tools", [])
         
-        # 1. Store the user's message
-        await self.memory_service.add_user_message(session_id, user_text)
-        context = await self.memory_service.build_context(session_id)
-        
-        current_sentence = ""
-        full_response = ""
-        boundary_regex = re.compile(r'([.?!])\s+')
-        
-        # 2. Stream from LLM
-        async for chunk in provider.generate_response_stream(context):
-            full_response += chunk
-            current_sentence += chunk
+        # 1. Store the user's message if there is one
+        if user_text:
+            await self.memory_service.add_user_message(session_id, user_text)
             
-            # Check if we've hit a sentence boundary (requires a space after punctuation to avoid numbers)
-            if boundary_regex.search(current_sentence) or ('\n' in current_sentence):
-                # Clean up newlines for simpler splitting
-                if '\n' in current_sentence:
-                    current_sentence = current_sentence.replace('\n', ' ')
+        while True:
+            context = await self.memory_service.build_context(session_id)
+            
+            current_sentence = ""
+            full_response = ""
+            boundary_regex = re.compile(r'([.?!])\s+')
+            
+            tool_calls_this_turn = []
+            
+            # 2. Stream from LLM
+            async for chunk in provider.generate_response_stream(context, tools=tools):
+                if isinstance(chunk, dict) and chunk.get("type") == "tool_call":
+                    tool_calls_this_turn.append(chunk)
+                    # We can yield it immediately, but let's accumulate it first, 
+                    # or yield it now and expect the result.
+                    # Actually, Groq sends tool calls at the end of the stream.
+                    continue
                     
-                parts = boundary_regex.split(current_sentence)
+                full_response += chunk
+                current_sentence += chunk
                 
-                # Combine punctuation back to the sentence
-                for i in range(0, len(parts) - 1, 2):
-                    sentence = parts[i] + parts[i+1]
-                    clean_sentence = self._normalize_for_tts(sentence)
-                    if clean_sentence:
-                        yield clean_sentence
+                # Check if we've hit a sentence boundary
+                if boundary_regex.search(current_sentence) or ('\n' in current_sentence):
+                    if '\n' in current_sentence:
+                        current_sentence = current_sentence.replace('\n', ' ')
+                        
+                    parts = boundary_regex.split(current_sentence)
+                    
+                    for i in range(0, len(parts) - 1, 2):
+                        sentence = parts[i] + parts[i+1]
+                        clean_sentence = self._normalize_for_tts(sentence)
+                        if clean_sentence:
+                            yield clean_sentence
+                    
+                    current_sentence = parts[-1]
+                    
+            # 3. Yield any remaining text
+            if current_sentence.strip():
+                clean_sentence = self._normalize_for_tts(current_sentence)
+                if clean_sentence:
+                    yield clean_sentence
+                    
+            # 4. Save the AI's final full text response to memory (if any)
+            if full_response.strip():
+                await self.memory_service.add_assistant_message(session_id, full_response)
                 
-                # The last part is the unfinished next sentence
-                current_sentence = parts[-1]
+            # 5. Handle Tool Calls if the LLM decided to use any
+            if not tool_calls_this_turn:
+                # No tool calls, we are done answering the user.
+                break
                 
-        # 3. Yield any remaining text
-        if current_sentence.strip():
-            clean_sentence = self._normalize_for_tts(current_sentence)
-            if clean_sentence:
-                yield clean_sentence
+            for tc in tool_calls_this_turn:
+                # Add the tool call to memory
+                # Use the ID provided by the LLM, fallback to UUID if missing
+                import uuid
+                tc_id = tc.get("id") or f"call_{uuid.uuid4().hex[:8]}"
+                await self.memory_service.add_tool_call(
+                    session_id, 
+                    tool_name=tc["name"], 
+                    arguments=tc["arguments"],
+                    tool_call_id=tc_id
+                )
+                # Yield the tool call to the client and wait for the result
+                tool_result_payload = yield tc
                 
-        # 4. Save the AI's final full response to memory
-        await self.memory_service.add_assistant_message(session_id, full_response)
+                # The client sends back a payload like {"result": "...", "name": "..."}
+                result_str = tool_result_payload.get("result", "") if isinstance(tool_result_payload, dict) else "Error: No result"
+                
+                # Add the tool result to memory
+                await self.memory_service.add_tool_result(
+                    session_id,
+                    tool_name=tc["name"],
+                    result=result_str,
+                    tool_call_id=tc_id
+                )
+            
+            # After handling all tool calls this turn, the while loop will naturally restart,
+            # pull the updated context, and stream the LLM's NEXT response (which may just be text,
+            # or could be MORE tool calls - i.e. Tool Chaining!)
 
     def _normalize_for_tts(self, text: str) -> str:
         """Lightweight inline normalization for TTS safety."""
@@ -108,13 +154,17 @@ class RuntimeExecutionPipeline:
         text = re.sub(r'[*#_~`]+', '', text)
         text = re.sub(r'\[(.*?)\]\(.*?\)', r'\1', text)
         
-        # 2. Acronym smoothing (e.g., B.Tech -> B Tech, Ph.D. -> Ph D)
+        # 2. Strip leaked XML tool calls (e.g. <function equals ...>...</function>)
+        text = re.sub(r'<function.*?>.*?</function>', '', text, flags=re.IGNORECASE|re.DOTALL)
+        text = re.sub(r'</?function.*?>', '', text, flags=re.IGNORECASE)
+        
+        # 3. Acronym smoothing (e.g., B.Tech -> B Tech, Ph.D. -> Ph D)
         text = re.sub(r'(?<=[a-zA-Z])\.(?=[a-zA-Z])', ' ', text)
         
         # Number ranges (e.g., 5-10 -> 5 to 10)
         text = re.sub(r'(?<=\d)\s*-\s*(?=\d)', ' to ', text)
         
-        # 3. Symbol expansion
+        # 4. Symbol expansion
         symbol_map = {'+': ' plus ', '=': ' equals ', '%': ' percent ', '&': ' and '}
         for sym, word in symbol_map.items():
             text = text.replace(sym, word)

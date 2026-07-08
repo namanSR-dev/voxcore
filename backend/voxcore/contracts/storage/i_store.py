@@ -8,6 +8,7 @@ class ConversationTurn:
     role: str
     content: str
     timestamp: datetime
+    metadata: Dict[str, Any] = None
 
 class IStore(ABC):
     """
@@ -15,7 +16,7 @@ class IStore(ABC):
     """
     
     @abstractmethod
-    async def append_turn(self, session_id: str, role: str, content: str) -> None:
+    async def append_turn(self, session_id: str, role: str, content: str, metadata: Dict[str, Any] = None) -> None:
         """
         Appends a new turn to the session's conversation history.
         """
