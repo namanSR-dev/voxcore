@@ -30,22 +30,26 @@ class PiperTtsAdapter(ITtsProvider):
         self.voice = PiperVoice.load(self.model_path)
         print("Piper TTS Model loaded successfully.")
 
-    def _synthesize_sync(self, text: str) -> bytes:
+    def _synthesize_sync(self, text: str, speaker_id: int | None = None) -> bytes:
         """
         Synchronous synthesis using the in-memory PiperVoice model.
         Returns a complete WAV audio payload.
         """
         wav_io = io.BytesIO()
+        from piper.config import SynthesisConfig
         with wave.open(wav_io, 'wb') as wav_file:
-            self.voice.synthesize_wav(text, wav_file)
+            if speaker_id is not None:
+                self.voice.synthesize_wav(text, wav_file, syn_config=SynthesisConfig(speaker_id=speaker_id))
+            else:
+                self.voice.synthesize_wav(text, wav_file)
         return wav_io.getvalue()
 
-    async def synthesize(self, text: str) -> bytes:
+    async def synthesize(self, text: str, speaker_id: int | None = None) -> bytes:
         """
         Synthesizes text asynchronously by offloading to a thread pool.
         """
         # Run the synchronous synthesis in a background thread to avoid blocking the event loop
-        wav_bytes = await asyncio.to_thread(self._synthesize_sync, text)
+        wav_bytes = await asyncio.to_thread(self._synthesize_sync, text, speaker_id)
         return wav_bytes
 
     async def synthesize_stream(self, text: str) -> AsyncGenerator[bytes, None]:

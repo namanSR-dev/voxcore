@@ -47,6 +47,42 @@
             overflow-y: auto;
             font-size: 0.9em;
         }
+        .transcript-box {
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 6px;
+            font-style: italic;
+            color: #cbd5e1;
+            min-height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .volume-container {
+            width: 100%;
+            height: 8px;
+            background: #334155;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            overflow: hidden;
+        }
+        .volume-bar {
+            height: 100%;
+            width: 0%;
+            background: #10b981;
+            transition: width 0.1s ease-out, background-color 0.2s;
+        }
+        select {
+            background: #334155;
+            color: white;
+            border: none;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 14px;
+            width: 100%;
+            margin-bottom: 20px;
+        }
         button {
             background: #3b82f6;
             color: white;
@@ -78,8 +114,32 @@
         
         <div class="status" id="status">Status: Disconnected</div>
         
+        <div class="volume-container">
+            <div class="volume-bar" id="volume-bar"></div>
+        </div>
+        
         <button id="btn-connect">Start Voice Session</button>
         <button id="btn-disconnect" class="btn-disconnect">End Session</button>
+
+        <div class="transcript-box" id="transcript-user">
+            [ You said... ]
+        </div>
+        
+        <div class="transcript-box" id="transcript-ai" style="color: #38bdf8;">
+            [ AI responding... ]
+        </div>
+        
+        <div style="margin-top: 20px;">
+            <label for="speaker-select" style="display:block; margin-bottom: 5px; font-size: 14px; color: #94a3b8;">Choose AI Voice:</label>
+            <select id="speaker-select">
+                <option value="0">Voice 0 (Default)</option>
+                <option value="15">Voice 15 (American Female)</option>
+                <option value="42">Voice 42 (American Male)</option>
+                <option value="100">Voice 100 (Deep Male)</option>
+                <option value="500">Voice 500 (British Accent)</option>
+                <option value="903">Voice 903 (Young Female)</option>
+            </select>
+        </div>
 
         <div class="tool-logs" id="logs">
             > Tool execution logs will appear here...
@@ -95,6 +155,18 @@
         const statusDiv = document.getElementById('status');
         const logsDiv = document.getElementById('logs');
         const app = document.getElementById('app');
+        const volumeBar = document.getElementById('volume-bar');
+        const transcriptUser = document.getElementById('transcript-user');
+        const transcriptAi = document.getElementById('transcript-ai');
+        const speakerSelect = document.getElementById('speaker-select');
+
+        // Allow changing voice instantly while connected
+        speakerSelect.addEventListener('change', (e) => {
+            if (client) {
+                client.setSpeaker(parseInt(e.target.value));
+                logEvent(`Changed voice to Speaker ID: ${e.target.value}`);
+            }
+        });
 
         function logEvent(msg) {
             logsDiv.innerHTML += `<div>> ${msg}</div>`;
@@ -180,17 +252,38 @@
                     btnConnect.style.display = 'none';
                     btnDisconnect.style.display = 'block';
                     app.classList.add("mic-active");
+                    
+                    // Immediately apply selected speaker on connection
+                    client.setSpeaker(parseInt(speakerSelect.value));
                 } else if (state.includes("Disconnected")) {
                     btnConnect.style.display = 'block';
                     btnConnect.disabled = false;
                     btnConnect.innerText = "Start Voice Session";
                     btnDisconnect.style.display = 'none';
                     app.classList.remove("mic-active");
+                    volumeBar.style.width = '0%';
                 }
             };
 
             client.onAiSpeaking = (isSpeaking) => {
                 isSpeaking ? app.classList.remove("mic-active") : app.classList.add("mic-active");
+            };
+            
+            client.onVolumeChange = (volume) => {
+                const percent = Math.min(100, Math.round(volume * 100));
+                volumeBar.style.width = `${percent}%`;
+                // Change color if speaking loudly
+                if (percent > 60) volumeBar.style.backgroundColor = '#ef4444';
+                else if (percent > 30) volumeBar.style.backgroundColor = '#f59e0b';
+                else volumeBar.style.backgroundColor = '#10b981';
+            };
+            
+            client.onUserTranscription = (text) => {
+                transcriptUser.innerText = `"${text}"`;
+            };
+            
+            client.onAiTranscription = (text) => {
+                transcriptAi.innerText = text;
             };
 
             client.onError = (err) => {

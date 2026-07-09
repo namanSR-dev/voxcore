@@ -58,7 +58,7 @@ class DynamicRegistry:
 print("Initializing Voice Providers...")
 # 1. Initialize Adapters
 groq_adapter = GroqAdapter()
-piper_tts = PiperTtsAdapter(model_path="models/en_US-lessac-medium.onnx")
+piper_tts = PiperTtsAdapter(model_path="models/en_US-libritts-high.onnx")
 # Set threshold to 0.8 to force the neural network to ignore background TVs
 silero_vad = SileroVadAdapter(sample_rate=16000, threshold=0.8)
 
