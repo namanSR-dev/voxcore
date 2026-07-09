@@ -15,6 +15,9 @@ class VoxCoreClient {
         this.workletNode = null;
         this.currentPlaySource = null;
         this.audioQueue = [];
+        this.messageQueue = [];
+        this.isProcessingQueue = false;
+        this.pendingTtsText = null;
         this.isPlaying = false;
         
         // Tool Registry
@@ -24,6 +27,9 @@ class VoxCoreClient {
         this.onStateChange = (state) => {};
         this.onAiSpeaking = (isSpeaking) => {};
         this.onError = (err) => {};
+        this.onVolumeChange = (volume) => {}; // 0.0 to 1.0
+        this.onUserTranscription = (text) => {};
+        this.onAiTranscription = (text) => {};
     }
 
     registerTool(config) {
@@ -51,6 +57,7 @@ class VoxCoreClient {
     }
 
     async _executeTool(name, argsStr) {
+        // ... (unchanged)
         let args = {};
         try {
             if (argsStr && typeof argsStr === 'string') {
@@ -99,6 +106,15 @@ class VoxCoreClient {
             }));
         }
     }
+    
+    setSpeaker(speakerId) {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(JSON.stringify({
+                type: "set_speaker",
+                speaker_id: speakerId
+            }));
+        }
+    }
 
     async connect() {
         try {
@@ -138,6 +154,7 @@ class VoxCoreClient {
                 }
                 
                 await this._setupAudioWorklet();
+                this._startVolumeMeter();
             };
 
             this.ws.onmessage = async (event) => {
@@ -151,6 +168,36 @@ class VoxCoreClient {
             this.onError(err);
             this.disconnect();
         }
+    }
+
+    _startVolumeMeter() {
+        if (!this.audioContext || !this.mediaStream) return;
+        
+        const analyser = this.audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        const source = this.audioContext.createMediaStreamSource(this.mediaStream);
+        source.connect(analyser);
+        
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        
+        const checkVolume = () => {
+            if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+            
+            analyser.getByteFrequencyData(dataArray);
+            let sum = 0;
+            for (let i = 0; i < dataArray.length; i++) {
+                sum += dataArray[i];
+            }
+            const average = sum / dataArray.length;
+            // Normalize to roughly 0.0 - 1.0
+            const volume = Math.min(1.0, average / 128.0);
+            
+            this.onVolumeChange(volume);
+            
+            requestAnimationFrame(checkVolume);
+        };
+        
+        checkVolume();
     }
 
     async _setupAudioWorklet() {
@@ -219,6 +266,9 @@ class VoxCoreClient {
                     }
                 } else if (msg.type === "interrupt") {
                     this.audioQueue = []; // Clear queue on interrupt
+                    this.messageQueue = []; // Clear pending raw messages
+                    this.pendingTtsText = null;
+                    this.onAiTranscription("[ Interrupted ]");
                     if (this.currentPlaySource) {
                         this.currentPlaySource.stop();
                         this.currentPlaySource = null;
@@ -231,7 +281,11 @@ class VoxCoreClient {
                     this.onStateChange("Interrupted. Listening...");
                 } else if (msg.type === "tts_text") {
                     console.log(`[Queueing Sentence] ${msg.text}`);
-                    this.onStateChange(`Queueing: ${msg.text}`);
+                    this.messageQueue.push({ type: 'text', text: msg.text });
+                    this._processMessageQueue();
+                } else if (msg.type === "user_transcript") {
+                    console.log(`[User Said] ${msg.text}`);
+                    this.onUserTranscription(msg.text);
                 } else if (msg.type === "tool_call") {
                     console.log(`[Tool Call Received] ${msg.name}`, msg.arguments);
                     this.onStateChange(`Executing Tool: ${msg.name}...`);
@@ -244,13 +298,40 @@ class VoxCoreClient {
         }
 
         // Handle Audio Playback
-        if (this.playAudioContext.state === 'suspended') {
-            await this.playAudioContext.resume();
+        this.messageQueue.push({ type: 'audio', data: event.data });
+        this._processMessageQueue();
+    }
+    
+    async _processMessageQueue() {
+        if (this.isProcessingQueue) return;
+        this.isProcessingQueue = true;
+        
+        while (this.messageQueue.length > 0) {
+            const item = this.messageQueue.shift();
+            
+            if (item.type === 'text') {
+                this.pendingTtsText = item.text;
+            } else if (item.type === 'audio') {
+                if (this.playAudioContext.state === 'suspended') {
+                    await this.playAudioContext.resume();
+                }
+                
+                try {
+                    const audioBuffer = await this.playAudioContext.decodeAudioData(item.data);
+                    if (this.pendingTtsText) {
+                        audioBuffer.text = this.pendingTtsText;
+                        this.pendingTtsText = null;
+                    }
+                    
+                    this.audioQueue.push(audioBuffer);
+                    this._playNextInQueue();
+                } catch (e) {
+                    console.error("Error decoding audio data:", e);
+                }
+            }
         }
         
-        const audioBuffer = await this.playAudioContext.decodeAudioData(event.data);
-        this.audioQueue.push(audioBuffer);
-        this._playNextInQueue();
+        this.isProcessingQueue = false;
     }
     
     _playNextInQueue() {
@@ -261,6 +342,11 @@ class VoxCoreClient {
         this.onStateChange("AI is speaking...");
         
         const audioBuffer = this.audioQueue.shift();
+        
+        if (audioBuffer.text) {
+            this.onAiTranscription(audioBuffer.text);
+        }
+        
         const playSource = this.playAudioContext.createBufferSource();
         playSource.buffer = audioBuffer;
         playSource.connect(this.playAudioContext.destination);

@@ -4,6 +4,7 @@ api/controllers/websocket_controller.py
 Manages long-lived bidirectional WebSocket connections for streaming Voice AI responses.
 """
 from typing import Any
+import asyncio
 from fastapi import WebSocket, WebSocketDisconnect
 
 from voxcore.api.runtime_gateway import RuntimeGateway
@@ -64,6 +65,12 @@ class WebSocketController:
         session_tools = []
         tool_result_event = asyncio.Event()
         last_tool_result = [None] # Array so it can be mutated inside process_utterance
+        
+        # WebSocket Lock for thread safety
+        ws_lock = asyncio.Lock()
+        
+        # Voice Settings
+        current_speaker_id = [None] # Default to whatever the model's default is
 
         async def process_utterance(audio_bytes: bytes):
             nonlocal pipeline_task
@@ -82,7 +89,10 @@ class WebSocketController:
                 
                 # 1. Send interrupt to frontend to clear the queue
                 try:
-                    await websocket.send_text('{"type": "interrupt"}')
+                    async with ws_lock:
+                        await websocket.send_text('{"type": "interrupt"}')
+                        import json
+                        await websocket.send_text(json.dumps({"type": "user_transcript", "text": transcript.strip()}))
                 except Exception:
                     pass
                 
@@ -99,7 +109,9 @@ class WebSocketController:
                         connection_id,
                         session_tools,
                         tool_result_event,
-                        last_tool_result
+                        last_tool_result,
+                        current_speaker_id[0],
+                        ws_lock
                     )
                 )
             except asyncio.CancelledError:
@@ -132,6 +144,10 @@ class WebSocketController:
                                 print(f"[{time.strftime('%H:%M:%S')}] Received tool result for '{data.get('name')}'")
                                 last_tool_result[0] = data
                                 tool_result_event.set()
+                            elif msg_type == "set_speaker":
+                                speaker = data.get("speaker_id")
+                                current_speaker_id[0] = int(speaker) if speaker is not None else None
+                                print(f"[{time.strftime('%H:%M:%S')}] Changed TTS Speaker ID to: {current_speaker_id[0]}")
                         except json.JSONDecodeError:
                             pass
                         continue
@@ -229,7 +245,7 @@ class WebSocketController:
         except WebSocketDisconnect:
             print("Client disconnected.")
             
-    async def _process_llm_tts_task(self, websocket: WebSocket, transcript: str, connection_id: str, session_tools: list, tool_result_event, last_tool_result) -> None:
+    async def _process_llm_tts_task(self, websocket: WebSocket, transcript: str, connection_id: str, session_tools: list, tool_result_event, last_tool_result, speaker_id: int | None, ws_lock: asyncio.Lock) -> None:
         """Runs the LLM -> TTS pipeline asynchronously with diagnostic timestamps."""
         import asyncio
         import time
@@ -260,8 +276,8 @@ class WebSocketController:
                         break
                         
                     tts_start = time.time()
-                    print(f"[{tts_start - start_t:.2f}s] [TTS START] Synthesizing: '{sentence}'")
-                    audio_resp = await self.tts.synthesize(sentence)
+                    print(f"[{tts_start - start_t:.2f}s] [TTS START] Synthesizing: '{sentence}' with speaker {speaker_id}")
+                    audio_resp = await self.tts.synthesize(sentence, speaker_id=speaker_id)
                     tts_end = time.time()
                     print(f"[{tts_end - start_t:.2f}s] [TTS DONE] Took {tts_end - tts_start:.2f}s: '{sentence}'")
                     
@@ -270,11 +286,13 @@ class WebSocketController:
                         
                     # Tell frontend which text is about to play
                     try:
-                        await websocket.send_text(f'{{"type": "tts_text", "text": {repr(sentence)}}}')
-                    except Exception:
+                        import json
+                        async with ws_lock:
+                            await websocket.send_text(json.dumps({"type": "tts_text", "text": sentence}))
+                            await websocket.send_bytes(audio_resp)
+                    except Exception as e:
+                        print(f"Error sending TTS data: {e}")
                         pass
-                        
-                    await websocket.send_bytes(audio_resp)
                     sentence_queue.task_done()
             
             # Start the TTS worker in the background
@@ -292,7 +310,8 @@ class WebSocketController:
                         if isinstance(item, dict) and item.get("type") == "tool_call":
                             print(f"[{time.time() - start_t:.2f}s] LLM Yielded Tool Call: {item['name']}")
                             # Send to client to execute
-                            await websocket.send_text(json.dumps(item))
+                            async with ws_lock:
+                                await websocket.send_text(json.dumps(item))
                             
                             # Wait for client to send back the tool_result
                             await tool_result_event.wait()
