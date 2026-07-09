@@ -21,6 +21,16 @@ from voxcore.api.exception_translator import ExceptionTranslator
 from voxcore.runtime.pipeline.execution_pipeline import RuntimeExecutionPipeline
 from voxcore.transport.websocket.websocket_server import WebSocketServer
 
+# Auth & Database
+from fastapi import Depends, HTTPException, status
+from voxcore.storage.database.core import Base, engine, get_db
+from voxcore.storage.repositories.sql_project_repository import SqlProjectRepository
+from voxcore.security.ticket_service import TicketService
+import asyncio
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text
+
+
 # Concrete Provider Adapters
 from voxcore.providers.adapters.groq_adapter import GroqAdapter
 from voxcore.providers.adapters.piper_tts_adapter import PiperTtsAdapter
@@ -38,6 +48,34 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Background Tasks Reference
+background_tasks = set()
+
+async def ticket_pruning_loop():
+    """Background task to delete expired tickets every 15 minutes to prevent SQLite bloat."""
+    while True:
+        try:
+            await asyncio.sleep(900) # 15 minutes
+            async with AsyncSession(engine) as session:
+                await session.execute(text("DELETE FROM ephemeral_tickets WHERE expires_at < strftime('%s', 'now')"))
+                await session.commit()
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            print(f"Error in pruning loop: {e}")
+
+@app.on_event("startup")
+async def startup_event():
+    # Initialize the database schema
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+        
+    # Start the background ticket pruning loop
+    task = asyncio.create_task(ticket_pruning_loop())
+    background_tasks.add(task)
+    task.add_done_callback(background_tasks.discard)
+
 
 # Mount the static directory to serve the JS SDK
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -64,10 +102,8 @@ silero_vad = SileroVadAdapter(sample_rate=16000, threshold=0.8)
 
 # 2. Build Memory and Storage
 store = InMemoryStore()
-from voxcore.memory.composition.context_builder import ContextBuilder
-client_persona = "You are a friendly technical mentor explaining Voice AI to a university student."
-builder = ContextBuilder(client_prompt=client_persona)
-memory_service = SessionMemoryManager(store, context_builder=builder)
+# Note: ContextBuilder initialization is now handled dynamically per-connection in the WebSocketController.
+memory_service = SessionMemoryManager(store)
 
 # 3. Build Core Pipeline
 pipeline = RuntimeExecutionPipeline(
@@ -102,6 +138,37 @@ async def execute_inference(request: Request):
     """Main entrypoint for text-based conversational AI requests."""
     payload = await request.json()
     return await http_controller.accept_request(payload)
+
+@app.post("/v1/auth/ticket")
+async def generate_ticket(request: Request, db: AsyncSession = Depends(get_db)):
+    """
+    Authenticates a backend server using their Master API Key and returns a short-lived WebRTC/WebSocket ticket.
+    """
+    # 1. Extract API Key from Authorization header
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing or invalid Authorization header")
+        
+    api_key = auth_header.split(" ")[1]
+    
+    # 2. Authenticate the Project
+    project_repo = SqlProjectRepository(db)
+    project = await project_repo.get_project_by_api_key(api_key)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API Key")
+        
+    # 3. Issue Ticket
+    try:
+        body = await request.json()
+        session_id = body.get("session_id")
+    except Exception:
+        session_id = None
+        
+    ticket_service = TicketService(db)
+    ticket_uuid = await ticket_service.issue_ticket(project_id=project.id, session_id=session_id)
+    
+    return {"ticket": ticket_uuid}
+
 
 
 # --- WebSocket Route ---

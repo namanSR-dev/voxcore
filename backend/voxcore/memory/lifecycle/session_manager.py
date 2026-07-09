@@ -10,11 +10,16 @@ class SessionMemoryManager(IMemoryService):
     Also handles interrupt logic (storing fragments without sending them to the LLM).
     """
 
-    def __init__(self, store: IStore, context_builder: ContextBuilder = None):
+    def __init__(self, store: IStore):
         self.store = store
-        self.context_builder = context_builder or ContextBuilder()
+        self.default_context_builder = ContextBuilder()
+        self._session_builders: Dict[str, ContextBuilder] = {}
         # Track active interrupt fragments for a session
         self._interrupt_fragments: Dict[str, List[str]] = {}
+
+    def register_session_persona(self, session_id: str, persona: str) -> None:
+        """Registers a dynamic persona for a specific tenant session."""
+        self._session_builders[session_id] = ContextBuilder(client_prompt=persona)
 
     async def add_user_message(self, session_id: str, content: str, is_interrupt: bool = False) -> None:
         """
@@ -80,4 +85,5 @@ class SessionMemoryManager(IMemoryService):
         """
         # Fetch the last 10 turns by default to prevent context window explosion
         history = await self.store.get_history(session_id, limit=10)
-        return self.context_builder.build(history)
+        builder = self._session_builders.get(session_id, self.default_context_builder)
+        return builder.build(history)

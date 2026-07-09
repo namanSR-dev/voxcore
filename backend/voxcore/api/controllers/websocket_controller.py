@@ -35,11 +35,24 @@ class WebSocketController:
         self.vad = vad_provider
         self.translator = translator
 
-    async def handle_connection(self, websocket: WebSocket) -> None:
+    async def handle_connection(self, websocket: WebSocket, project: Any = None, client_session_id: str = None) -> None:
         """
         Manages the lifecycle of a single WebSocket connection.
         """
-        connection_id = "ws-" + str(id(websocket))
+        # Enforce Tenant Isolation for the Session ID
+        # If the client provides a session_id, prefix it with their project_id to prevent collision.
+        # Otherwise, generate an ephemeral connection ID.
+        if client_session_id and project:
+            connection_id = f"proj_{project.id}_{client_session_id}"
+        else:
+            connection_id = "ws-" + str(id(websocket))
+            
+        # Register the dynamic persona for this specific tenant's session
+        if project and hasattr(self.gateway, "pipeline"):
+            pipeline = self.gateway.pipeline
+            if hasattr(pipeline, "memory_service") and hasattr(pipeline.memory_service, "register_session_persona"):
+                pipeline.memory_service.register_session_persona(connection_id, project.domain_persona)
+                
         audio_buffer = bytearray()
         
         import collections
