@@ -38,6 +38,9 @@ class PiperTtsAdapter(ITtsProvider):
         wav_io = io.BytesIO()
         from piper.config import SynthesisConfig
         with wave.open(wav_io, 'wb') as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(self.voice.config.sample_rate)
             if speaker_id is not None:
                 self.voice.synthesize_wav(text, wav_file, syn_config=SynthesisConfig(speaker_id=speaker_id))
             else:

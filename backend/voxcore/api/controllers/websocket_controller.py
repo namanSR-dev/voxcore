@@ -35,7 +35,7 @@ class WebSocketController:
         self.vad = vad_provider
         self.translator = translator
 
-    async def handle_connection(self, websocket: WebSocket, project: Any = None, client_session_id: str = None, initial_context: list = None) -> None:
+    async def handle_connection(self, websocket: WebSocket, project: Any = None, client_session_id: str | None = None, initial_context: list | None = None) -> None:
         """
         Manages the lifecycle of a single WebSocket connection.
         """
@@ -54,14 +54,14 @@ class WebSocketController:
                 # 1. Boot memory from client's initial_context
                 if initial_context:
                     # Clear any existing memory for this connection
-                    pipeline.memory_service.store.clear_session(connection_id)
+                    await pipeline.memory_service.store.clear_history(connection_id)
                     for turn in initial_context:
                         role = turn.get("role")
                         content = turn.get("content")
                         if role == "user":
-                            asyncio.create_task(pipeline.memory_service.add_user_message(connection_id, content))
+                            await pipeline.memory_service.add_user_message(connection_id, content)
                         elif role == "assistant":
-                            asyncio.create_task(pipeline.memory_service.add_assistant_message(connection_id, content))
+                            await pipeline.memory_service.add_assistant_message(connection_id, content)
                         elif role == "tool":
                             # Note: We'd need to store tool results properly if we wanted to support them in initial_context
                             pass
@@ -100,7 +100,7 @@ class WebSocketController:
         ws_lock = asyncio.Lock()
         
         # Voice Settings
-        current_speaker_id = [None] # Default to whatever the model's default is
+        current_speaker_id: list[int | None] = [None] # Default to whatever the model's default is
 
         async def process_utterance(audio_bytes: bytes):
             nonlocal pipeline_task
@@ -338,7 +338,7 @@ class WebSocketController:
                 while True:
                     try:
                         if isinstance(item, dict) and item.get("type") == "tool_call":
-                            print(f"[{time.time() - start_t:.2f}s] LLM Yielded Tool Call: {item['name']}")
+                            print(f"[{time.time() - start_t:.2f}s] LLM Yielded Tool Call: {item['name']} with args: {item.get('arguments')}")
                             # Send to client to execute
                             async with ws_lock:
                                 await websocket.send_text(json.dumps(item))
