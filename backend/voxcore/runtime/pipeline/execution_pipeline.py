@@ -5,6 +5,7 @@ Orchestrates the lifecycle of a single execution request.
 """
 from typing import List, Dict, Any
 import re
+import asyncio
 from voxcore.contracts.runtime.models import Request, Response
 from voxcore.contracts.memory.i_memory_service import IMemoryService
 
@@ -86,29 +87,26 @@ class RuntimeExecutionPipeline:
                 async for chunk in provider.generate_response_stream(context, tools=tools):
                     if isinstance(chunk, dict) and chunk.get("type") == "tool_call":
                         tool_calls_this_turn.append(chunk)
-                    # We can yield it immediately, but let's accumulate it first, 
-                    # or yield it now and expect the result.
-                    # Actually, Groq sends tool calls at the end of the stream.
-                    continue
+                        continue
                     
-                full_response += chunk
-                current_sentence += chunk
-                
-                # Check if we've hit a sentence boundary
-                if boundary_regex.search(current_sentence) or ('\n' in current_sentence):
-                    if '\n' in current_sentence:
-                        current_sentence = current_sentence.replace('\n', ' ')
+                    full_response += chunk
+                    current_sentence += chunk
+                    
+                    # Check if we've hit a sentence boundary
+                    if boundary_regex.search(current_sentence) or ('\n' in current_sentence):
+                        if '\n' in current_sentence:
+                            current_sentence = current_sentence.replace('\n', ' ')
+                            
+                        parts = boundary_regex.split(current_sentence)
                         
-                    parts = boundary_regex.split(current_sentence)
-                    
-                    for i in range(0, len(parts) - 1, 2):
-                        sentence = parts[i] + parts[i+1]
-                        clean_sentence = self._normalize_for_tts(sentence)
-                        if clean_sentence:
-                            dispatched_response += clean_sentence + " "
-                            yield clean_sentence
-                    
-                    current_sentence = parts[-1]
+                        for i in range(0, len(parts) - 1, 2):
+                            sentence = parts[i] + parts[i+1]
+                            clean_sentence = self._normalize_for_tts(sentence)
+                            if clean_sentence:
+                                dispatched_response += clean_sentence + " "
+                                yield clean_sentence
+                        
+                        current_sentence = parts[-1]
                     
                 # 3. Yield any remaining text
                 if current_sentence.strip():
@@ -116,6 +114,21 @@ class RuntimeExecutionPipeline:
                     if clean_sentence:
                         dispatched_response += clean_sentence + " "
                         yield clean_sentence
+                        
+                # 3.5 Handle Groq XML Tool Call Leaks
+                leak_match = re.search(r'<function=(.*?)>(.*?)</function>', full_response, flags=re.DOTALL | re.IGNORECASE)
+                if leak_match:
+                    import uuid
+                    tool_name = leak_match.group(1).strip('"\'') # Handle <function="name">
+                    tool_args = leak_match.group(2)
+                    tool_calls_this_turn.append({
+                        "type": "tool_call",
+                        "id": f"call_{uuid.uuid4().hex[:8]}",
+                        "name": tool_name,
+                        "arguments": tool_args
+                    })
+                    # Strip it from the memory so it doesn't leak to the chat UI
+                    full_response = re.sub(r'<function=.*?>.*?</function>', '', full_response, flags=re.DOTALL | re.IGNORECASE)
                         
                 # 4. Save the AI's final full text response to memory (if any)
                 if full_response.strip():
