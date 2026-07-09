@@ -8,6 +8,9 @@ import re
 from voxcore.contracts.runtime.models import Request, Response
 from voxcore.contracts.memory.i_memory_service import IMemoryService
 
+class PipelineInterruptedError(Exception):
+    pass
+
 class RuntimeExecutionPipeline:
     """
     The core engine that processes prompts, calls providers, and evaluates tool calls.
@@ -73,14 +76,16 @@ class RuntimeExecutionPipeline:
             
             current_sentence = ""
             full_response = ""
+            dispatched_response = ""
             boundary_regex = re.compile(r'([.?!])\s+')
             
             tool_calls_this_turn = []
             
-            # 2. Stream from LLM
-            async for chunk in provider.generate_response_stream(context, tools=tools):
-                if isinstance(chunk, dict) and chunk.get("type") == "tool_call":
-                    tool_calls_this_turn.append(chunk)
+            try:
+                # 2. Stream from LLM
+                async for chunk in provider.generate_response_stream(context, tools=tools):
+                    if isinstance(chunk, dict) and chunk.get("type") == "tool_call":
+                        tool_calls_this_turn.append(chunk)
                     # We can yield it immediately, but let's accumulate it first, 
                     # or yield it now and expect the result.
                     # Actually, Groq sends tool calls at the end of the stream.
@@ -100,19 +105,29 @@ class RuntimeExecutionPipeline:
                         sentence = parts[i] + parts[i+1]
                         clean_sentence = self._normalize_for_tts(sentence)
                         if clean_sentence:
+                            dispatched_response += clean_sentence + " "
                             yield clean_sentence
                     
                     current_sentence = parts[-1]
                     
-            # 3. Yield any remaining text
-            if current_sentence.strip():
-                clean_sentence = self._normalize_for_tts(current_sentence)
-                if clean_sentence:
-                    yield clean_sentence
-                    
-            # 4. Save the AI's final full text response to memory (if any)
-            if full_response.strip():
-                await self.memory_service.add_assistant_message(session_id, full_response)
+                # 3. Yield any remaining text
+                if current_sentence.strip():
+                    clean_sentence = self._normalize_for_tts(current_sentence)
+                    if clean_sentence:
+                        dispatched_response += clean_sentence + " "
+                        yield clean_sentence
+                        
+                # 4. Save the AI's final full text response to memory (if any)
+                if full_response.strip():
+                    await self.memory_service.add_assistant_message(session_id, full_response)
+                
+            except asyncio.CancelledError:
+                if dispatched_response.strip():
+                    import asyncio
+                    # Run this in background so it completes despite cancellation
+                    asyncio.create_task(self.memory_service.add_assistant_message(session_id, dispatched_response.strip()))
+                    raise PipelineInterruptedError(dispatched_response.strip())
+                raise
                 
             # 5. Handle Tool Calls if the LLM decided to use any
             if not tool_calls_this_turn:

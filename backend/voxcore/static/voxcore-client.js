@@ -30,6 +30,7 @@ class VoxCoreClient {
         this.onVolumeChange = (volume) => {}; // 0.0 to 1.0
         this.onUserTranscription = (text) => {};
         this.onAiTranscription = (text) => {};
+        this.onTurnFinalized = (text) => {};
     }
 
     registerTool(config) {
@@ -286,6 +287,9 @@ class VoxCoreClient {
                 } else if (msg.type === "user_transcript") {
                     console.log(`[User Said] ${msg.text}`);
                     this.onUserTranscription(msg.text);
+                } else if (msg.type === "turn_finalized") {
+                    console.log(`[Turn Finalized] ${msg.text}`);
+                    this.onTurnFinalized(msg.text);
                 } else if (msg.type === "tool_call") {
                     console.log(`[Tool Call Received] ${msg.name}`, msg.arguments);
                     this.onStateChange(`Executing Tool: ${msg.name}...`);

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, DateTime, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from voxcore.storage.database.core import Base
@@ -48,6 +48,7 @@ class EphemeralTicket(Base):
     ticket_uuid = Column(String, unique=True, index=True, nullable=False)
     project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
     session_id = Column(String, nullable=True)
+    initial_context = Column(JSON, nullable=True)
     # Stored as an integer (Unix timestamp in UTC) to prevent OS timezone mismatches
     expires_at = Column(Integer, nullable=False, index=True)
     

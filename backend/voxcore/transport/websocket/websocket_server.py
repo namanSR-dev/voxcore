@@ -33,7 +33,7 @@ class WebSocketServer:
                 await websocket.close(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid or expired ticket")
                 return
                 
-            project_id, session_id = result
+            project_id, session_id, initial_context = result
             
             project_repo = SqlProjectRepository(session)
             project = await project_repo.get_project_by_id(project_id)
@@ -44,7 +44,7 @@ class WebSocketServer:
 
         await websocket.accept()
         # Pass the authenticated project and session_id into the controller
-        await self.ws_controller.handle_connection(websocket, project, session_id)
+        await self.ws_controller.handle_connection(websocket, project, session_id, initial_context)
 
     async def _keep_alive(self, connection: Any) -> None:
         pass

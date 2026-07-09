@@ -139,13 +139,15 @@ async def execute_inference(request: Request):
     payload = await request.json()
     return await http_controller.accept_request(payload)
 
+from voxcore.contracts.api_models import TicketRequest
+
 @app.post("/v1/auth/ticket")
-async def generate_ticket(request: Request, db: AsyncSession = Depends(get_db)):
+async def generate_ticket(request: TicketRequest, raw_request: Request, db: AsyncSession = Depends(get_db)):
     """
     Authenticates a backend server using their Master API Key and returns a short-lived WebRTC/WebSocket ticket.
     """
     # 1. Extract API Key from Authorization header
-    auth_header = request.headers.get("Authorization")
+    auth_header = raw_request.headers.get("Authorization")
     if not auth_header or not auth_header.startswith("Bearer "):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing or invalid Authorization header")
         
@@ -157,15 +159,24 @@ async def generate_ticket(request: Request, db: AsyncSession = Depends(get_db)):
     if not project:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API Key")
         
-    # 3. Issue Ticket
-    try:
-        body = await request.json()
-        session_id = body.get("session_id")
-    except Exception:
-        session_id = None
+    # 3. Truth Arbitrator: Check if the server has a recent memory for this session
+    final_history = []
+    if request.history:
+        final_history = [turn.model_dump() for turn in request.history]
         
+    if request.session_id:
+        server_memory = await memory_service.build_context(request.session_id)
+        if server_memory and len(server_memory) > 0:
+            # Overwrite client payload with the server's truth (which has proper truncations)
+            final_history = server_memory[-10:] # Keep last 10
+            
+    # 4. Issue Ticket
     ticket_service = TicketService(db)
-    ticket_uuid = await ticket_service.issue_ticket(project_id=project.id, session_id=session_id)
+    ticket_uuid = await ticket_service.issue_ticket(
+        project_id=project.id, 
+        session_id=request.session_id,
+        initial_context=final_history
+    )
     
     return {"ticket": ticket_uuid}
 

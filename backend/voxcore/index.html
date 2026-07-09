@@ -92,7 +92,8 @@
         const btnDisconnect = document.getElementById('btn-disconnect');
         const statusDiv = document.getElementById('status');
         const appContainer = document.getElementById('app-container');
-
+        
+        let globalHistory = [];
         let client = null;
 
         btnConnect.addEventListener('click', async () => {
@@ -113,7 +114,10 @@
                         'Authorization': `Bearer ${apiKey}`,
                         'Content-Type': 'application/json'
                     },
-                    body: JSON.stringify({ session_id: "demo_user_1" })
+                    body: JSON.stringify({ 
+                        session_id: "demo_user_1",
+                        history: globalHistory.slice(-10) // Only send the last 10 turns (Tool-Call safe slice would be more complex, keeping simple for demo)
+                    })
                 });
 
                 if (!authRes.ok) {
@@ -171,6 +175,14 @@
                     } else {
                         appContainer.classList.add("mic-active");
                     }
+                };
+
+                client.onUserTranscription = (text) => {
+                    globalHistory.push({ role: "user", content: text });
+                };
+
+                client.onTurnFinalized = (text) => {
+                    globalHistory.push({ role: "assistant", content: text });
                 };
 
                 client.onError = (err) => {

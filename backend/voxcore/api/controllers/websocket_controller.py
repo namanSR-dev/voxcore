@@ -35,7 +35,7 @@ class WebSocketController:
         self.vad = vad_provider
         self.translator = translator
 
-    async def handle_connection(self, websocket: WebSocket, project: Any = None, client_session_id: str = None) -> None:
+    async def handle_connection(self, websocket: WebSocket, project: Any = None, client_session_id: str = None, initial_context: list = None) -> None:
         """
         Manages the lifecycle of a single WebSocket connection.
         """
@@ -50,8 +50,25 @@ class WebSocketController:
         # Register the dynamic persona for this specific tenant's session
         if project and hasattr(self.gateway, "pipeline"):
             pipeline = self.gateway.pipeline
-            if hasattr(pipeline, "memory_service") and hasattr(pipeline.memory_service, "register_session_persona"):
-                pipeline.memory_service.register_session_persona(connection_id, project.domain_persona)
+            if hasattr(pipeline, "memory_service"):
+                # 1. Boot memory from client's initial_context
+                if initial_context:
+                    # Clear any existing memory for this connection
+                    pipeline.memory_service.store.clear_session(connection_id)
+                    for turn in initial_context:
+                        role = turn.get("role")
+                        content = turn.get("content")
+                        if role == "user":
+                            asyncio.create_task(pipeline.memory_service.add_user_message(connection_id, content))
+                        elif role == "assistant":
+                            asyncio.create_task(pipeline.memory_service.add_assistant_message(connection_id, content))
+                        elif role == "tool":
+                            # Note: We'd need to store tool results properly if we wanted to support them in initial_context
+                            pass
+                
+                # 2. Prepend Persona
+                if hasattr(pipeline.memory_service, "register_session_persona"):
+                    pipeline.memory_service.register_session_persona(connection_id, project.domain_persona)
                 
         audio_buffer = bytearray()
         
@@ -347,6 +364,19 @@ class WebSocketController:
                 # Signal the worker that we are done
                 await sentence_queue.put(None)
                 await tts_task
+                
+                # Fetch the final assistant message from memory and send turn_finalized to sync client state
+                pipeline = self.gateway.pipeline
+                if hasattr(pipeline, "memory_service"):
+                    context = await pipeline.memory_service.build_context(connection_id)
+                    if context and len(context) > 0 and context[-1]["role"] == "assistant":
+                        async with ws_lock:
+                            await websocket.send_text(json.dumps({
+                                "type": "turn_finalized", 
+                                "role": "assistant", 
+                                "text": context[-1]["content"]
+                            }))
+                            
             except asyncio.CancelledError:
                 # If the pipeline is interrupted by user speaking, cancel the TTS worker immediately
                 if tts_task and not tts_task.done():
@@ -361,6 +391,16 @@ class WebSocketController:
         except RuntimeError as e:
             print(f"[{time.time() - start_t:.2f}s] Pipeline Runtime Error: {e}")
         except Exception as e:
+            from voxcore.runtime.pipeline.execution_pipeline import PipelineInterruptedError
+            if isinstance(e, PipelineInterruptedError):
+                print(f"[{time.time() - start_t:.2f}s] Pipeline Interrupted. Final dispatched text: '{e.args[0]}'")
+                try:
+                    async with ws_lock:
+                        await websocket.send_text(json.dumps({"type": "turn_finalized", "role": "assistant", "text": e.args[0]}))
+                except Exception:
+                    pass
+                return
+                
             import traceback
             traceback.print_exc()
             try:
