@@ -39,15 +39,7 @@ from voxcore.providers.adapters.silero_vad_adapter import SileroVadAdapter
 from voxcore.storage.adapters.in_memory_store import InMemoryStore
 from voxcore.memory.lifecycle.session_manager import SessionMemoryManager
 
-app = FastAPI(title="VoxCore API", version="1.0.0")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+from contextlib import asynccontextmanager
 
 # Background Tasks Reference
 background_tasks = set()
@@ -65,8 +57,8 @@ async def ticket_pruning_loop():
         except Exception as e:
             print(f"Error in pruning loop: {e}")
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     # Initialize the database schema
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -75,6 +67,22 @@ async def startup_event():
     task = asyncio.create_task(ticket_pruning_loop())
     background_tasks.add(task)
     task.add_done_callback(background_tasks.discard)
+    
+    yield
+    
+    # Cancel the background tasks on shutdown
+    for task in background_tasks:
+        task.cancel()
+
+app = FastAPI(title="VoxCore API", version="1.0.0", lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # Mount the static directory to serve the JS SDK
@@ -165,7 +173,8 @@ async def generate_ticket(request: TicketRequest, raw_request: Request, db: Asyn
         final_history = [turn.model_dump() for turn in request.history]
         
     if request.session_id:
-        server_memory = await memory_service.build_context(request.session_id)
+        tenant_session_id = f"proj_{project.id}_{request.session_id}"
+        server_memory = await memory_service.build_context(tenant_session_id)
         if server_memory and len(server_memory) > 0:
             # Overwrite client payload with the server's truth (which has proper truncations)
             final_history = server_memory[-10:] # Keep last 10
@@ -231,17 +240,6 @@ async def voice_endpoint(websocket: WebSocket):
     and streams audio back.
     """
     await ws_server.handle_upgrade(websocket)
-
-# --- Frontend Serving ---
-
-@app.get("/")
-async def serve_frontend():
-    """Serves the basic HTML testing client."""
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    index_path = os.path.join(current_dir, "index.html")
-    with open(index_path, "r") as f:
-        html = f.read()
-    return HTMLResponse(content=html)
 
 @app.get("/favicon.ico")
 async def favicon():
