@@ -3,171 +3,441 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VoxCore Demo App</title>
+    <title>VoxCore Client SDK Demo</title>
     <style>
+        :root {
+            --primary: #6C5CE7;
+            --primary-hover: #5A4FCF;
+            --bg-dark: #0F0F13;
+            --bg-panel: #1A1A24;
+            --text-main: #FFFFFF;
+            --text-muted: #8F8F9D;
+            --danger: #FF4757;
+            --success: #2ED573;
+        }
+
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
-            margin: 0;
-            background-color: #121212;
-            color: #ffffff;
         }
-        .container {
-            text-align: center;
-            padding: 40px;
-            border-radius: 12px;
-            background: #1e1e1e;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+
+        .app-layout {
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 20px;
+            width: 90%;
+            max-width: 1200px;
+            height: 85vh;
+        }
+
+        /* Control Panel */
+        .control-panel {
+            background: var(--bg-panel);
+            border-radius: 16px;
+            padding: 24px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        .brand h1 {
+            margin: 0 0 5px 0;
+            font-size: 24px;
+            background: linear-gradient(90deg, #6C5CE7, #A29BFE);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .brand p {
+            margin: 0 0 24px 0;
+            color: var(--text-muted);
+            font-size: 14px;
+        }
+
+        .input-group {
+            margin-bottom: 20px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 13px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .input-group input {
             width: 100%;
-            max-width: 400px;
+            padding: 12px;
+            background: rgba(0,0,0,0.2);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            color: white;
+            font-size: 14px;
+            box-sizing: border-box;
+            transition: border 0.2s;
         }
-        h1 { margin-top: 0; color: #4CAF50; }
-        .status {
-            margin: 20px 0;
-            padding: 15px;
-            border-radius: 6px;
-            background: #2a2a2a;
-            font-family: monospace;
-            font-size: 1.1em;
-            color: #4CAF50;
+        
+        .input-group input:focus {
+            outline: none;
+            border-color: var(--primary);
         }
-        button {
-            padding: 12px 24px;
-            font-size: 16px;
-            font-weight: bold;
+
+        .btn {
+            padding: 14px;
             border: none;
-            border-radius: 6px;
+            border-radius: 8px;
+            font-size: 15px;
+            font-weight: 600;
             cursor: pointer;
             transition: all 0.2s;
             width: 100%;
-            margin-bottom: 10px;
         }
-        .btn-connect {
-            background: #4CAF50;
+
+        .btn-primary {
+            background: var(--primary);
             color: white;
         }
-        .btn-connect:hover { background: #45a049; }
+
+        .btn-primary:hover {
+            background: var(--primary-hover);
+        }
         
-        .btn-disconnect {
-            background: #f44336;
-            color: white;
+        .btn-primary:disabled {
+            background: #333;
+            color: #888;
+            cursor: not-allowed;
+        }
+
+        .btn-danger {
+            background: rgba(255, 71, 87, 0.1);
+            color: var(--danger);
+            border: 1px solid rgba(255, 71, 87, 0.3);
             display: none;
         }
-        .btn-disconnect:hover { background: #d32f2f; }
+
+        .btn-danger:hover {
+            background: rgba(255, 71, 87, 0.2);
+        }
+
+        .status-indicator {
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 8px;
+            background: rgba(0,0,0,0.2);
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--text-muted);
+        }
+
+        .status-dot.active { background: var(--success); box-shadow: 0 0 10px var(--success); }
+        .status-dot.speaking { background: var(--primary); box-shadow: 0 0 10px var(--primary); }
+        .status-dot.error { background: var(--danger); box-shadow: 0 0 10px var(--danger); }
+
+        /* Mic Visualizer */
+        .mic-visualizer {
+            height: 40px;
+            margin-top: 20px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+        }
+        .mic-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, var(--primary), var(--success));
+            transition: width 0.1s ease;
+        }
+        .mic-label {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 11px;
+            color: rgba(255,255,255,0.7);
+            mix-blend-mode: difference;
+        }
+
+        /* Chat Panel */
+        .chat-panel {
+            background: var(--bg-panel);
+            border-radius: 16px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            border: 1px solid rgba(255,255,255,0.05);
+            overflow: hidden;
+        }
+
+        .chat-header {
+            padding: 20px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-weight: 600;
+        }
+
+        .chat-history {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .chat-bubble {
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+
+        .bubble-user {
+            background: var(--primary);
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+
+        .bubble-assistant {
+            background: rgba(255,255,255,0.05);
+            color: var(--text-main);
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+        }
         
-        /* Simple mic animation */
-        .mic-active {
-            animation: pulse 1.5s infinite;
+        .bubble-tool {
+            background: rgba(46, 213, 115, 0.1);
+            color: var(--success);
+            align-self: center;
+            border: 1px solid rgba(46, 213, 115, 0.2);
+            font-size: 12px;
+            text-align: center;
+            width: 100%;
         }
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.4); }
-            70% { box-shadow: 0 0 0 10px rgba(76, 175, 80, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0); }
-        }
-        #subtitles {
-            margin-top: 15px;
+
+        .live-subtitles {
+            padding: 20px;
+            background: rgba(0,0,0,0.3);
+            border-top: 1px solid rgba(255,255,255,0.05);
+            min-height: 60px;
+            display: flex;
+            align-items: center;
             font-style: italic;
-            color: #aaa;
-            min-height: 20px;
+            color: var(--primary);
+        }
+
+        /* Tool Result UI */
+        .weather-widget {
+            margin-top: 10px;
+            background: rgba(0,0,0,0.3);
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 3px solid var(--success);
+            font-size: 13px;
         }
     </style>
 </head>
 <body>
 
-    <div class="container" id="app-container">
-        <h1>VoxCore Voice AI</h1>
-        
-        <!-- Auth Section -->
-        <div id="auth-section" style="margin-bottom: 20px;">
-            <input type="password" id="api-key-input" placeholder="Enter Master API Key" style="width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 4px; border: 1px solid #555; background: #333; color: white;">
+    <div class="app-layout">
+        <!-- Sidebar Controls -->
+        <div class="control-panel">
+            <div class="brand">
+                <h1>VoxCore</h1>
+                <p>Client SDK Demo Environment</p>
+            </div>
+
+            <div class="input-group" id="auth-section">
+                <label>Master API Key</label>
+                <input type="password" id="api-key-input" value="vox_test_12345" placeholder="Enter Master API Key">
+            </div>
+
+            <button class="btn btn-primary" id="btn-connect">Connect Microphone</button>
+            <button class="btn btn-danger" id="btn-disconnect">Disconnect Session</button>
+
+            <div class="status-indicator">
+                <div class="status-dot" id="status-dot"></div>
+                <span id="status-text">Disconnected</span>
+            </div>
+
+            <div class="mic-visualizer">
+                <div class="mic-bar" id="mic-bar"></div>
+                <div class="mic-label">MIC VOLUME</div>
+            </div>
+            
+            <div style="margin-top: auto; font-size: 12px; color: var(--text-muted);">
+                <strong>Registered Tools:</strong><br/>
+                <span style="color: var(--success)">✓ change_theme</span>
+            </div>
         </div>
 
-        <div class="status" id="status">Status: Disconnected</div>
-        <button class="btn-connect" id="btn-connect">Connect Microphone</button>
-        <button class="btn-disconnect" id="btn-disconnect">Disconnect</button>
-        
-        <div id="subtitles"></div>
+        <!-- Main Chat Area -->
+        <div class="chat-panel">
+            <div class="chat-header">Session Context History</div>
+            
+            <div class="chat-history" id="chat-history">
+                <div style="text-align: center; color: var(--text-muted); font-size: 12px; margin-top: 50px;">
+                    History is empty. Connect and start speaking!
+                </div>
+            </div>
+
+            <div class="live-subtitles" id="live-subtitles">
+                Waiting for speech...
+            </div>
+        </div>
     </div>
 
-    <!-- Import the official VoxCore Client SDK wrapper -->
+    <!-- Import SDK -->
     <script type="module">
         import { VoxCore } from '../src/index.js';
 
         const btnConnect = document.getElementById('btn-connect');
         const btnDisconnect = document.getElementById('btn-disconnect');
-        const statusDiv = document.getElementById('status');
-        const appContainer = document.getElementById('app-container');
-        const subtitlesDiv = document.getElementById('subtitles');
+        const statusText = document.getElementById('status-text');
+        const statusDot = document.getElementById('status-dot');
+        const authSection = document.getElementById('auth-section');
+        const chatHistoryDiv = document.getElementById('chat-history');
+        const subtitlesDiv = document.getElementById('live-subtitles');
+        const micBar = document.getElementById('mic-bar');
 
-        // Initialize SDK
         const client = new VoxCore();
 
-        // 1. Setup SDK Events
+        // --- SDK Event Listeners ---
+
         client.onStateChange((state) => {
-            statusDiv.innerText = `Status: ${state}`;
+            statusText.innerText = state.toUpperCase();
+            
+            // Reset classes
+            statusDot.className = 'status-dot';
             
             if (state === "listening") {
                 btnConnect.style.display = 'none';
                 btnDisconnect.style.display = 'block';
-                document.getElementById('auth-section').style.display = 'none';
-                appContainer.classList.add("mic-active");
-            } else if (state === "idle" || state === "disconnected") {
-                btnConnect.style.display = 'block';
-                btnConnect.disabled = false;
-                btnConnect.innerText = "Connect Microphone";
-                btnDisconnect.style.display = 'none';
-                document.getElementById('auth-section').style.display = 'block';
-                appContainer.classList.remove("mic-active");
-                subtitlesDiv.innerText = "";
+                authSection.style.opacity = '0.5';
+                authSection.style.pointerEvents = 'none';
+                statusDot.classList.add('active');
+                subtitlesDiv.innerText = "Listening...";
+                subtitlesDiv.style.color = "var(--text-muted)";
             } else if (state === "speaking") {
-                appContainer.classList.remove("mic-active");
+                statusDot.classList.add('speaking');
+                subtitlesDiv.style.color = "var(--primary)";
             } else if (state === "thinking") {
-                appContainer.classList.remove("mic-active");
-                subtitlesDiv.innerText = "...";
+                statusDot.classList.add('active');
+                subtitlesDiv.innerText = "Thinking...";
+            } else if (state === "idle" || state === "disconnected") {
+                resetUI();
             }
         });
 
-        client.onTranscription((sentence) => {
-            subtitlesDiv.innerText = sentence;
+        client.onTranscription((text) => {
+            subtitlesDiv.innerText = text;
         });
 
-        client.onChatUpdate((chatHistory) => {
-            console.log("Updated Chat History:", chatHistory);
-            // In a real app, you would render this array in a nice chat box!
+        client.onChatUpdate((history) => {
+            renderChatHistory(history);
+        });
+
+        client.onMicLoudness((volume) => {
+            // Volume is 0 to 100
+            micBar.style.width = `${Math.min(volume * 2, 100)}%`; // Amplify slightly for visuals
         });
 
         client.onError((err) => {
             console.error("VoxCore Error:", err);
-            statusDiv.innerText = "Error: " + err.message;
+            statusText.innerText = "ERROR: " + err.message;
+            statusDot.className = 'status-dot error';
+            resetUI(); // Force reset UI on error to prevent stuck state
         });
 
-        // 2. Register Client-side Tools
+        // --- Tool Registration ---
         client.registerTool({
-            name: "get_weather",
-            description: "Get the current weather for a city.",
+            name: "change_theme",
+            description: "Changes the visual theme/background color of the user interface. ONLY USE THIS WHEN THE USER EXPLICITLY ASKS TO CHANGE THE COLOR OR THEME.",
             parameters: {
                 type: "object",
                 properties: {
-                    city: { type: "string", description: "The city to get weather for" }
+                    color: { type: "string", description: "A hex color code or css color name like 'red', 'blue', '#FF5733'" }
                 },
-                required: ["city"]
+                required: ["color"]
             },
             execute: async (args) => {
-                console.log("[Tool Execution] get_weather called with args:", args);
-                // Demo instant UI update via closure
-                subtitlesDiv.innerText = `Fetching weather for ${args.city}...`;
-                return `The weather in ${args.city} is sunny and 75 degrees.`;
+                console.log("[Tool Execution] change_theme called with args:", args);
+                
+                // Show tool execution in UI
+                subtitlesDiv.innerText = `[System] Executing tool: change_theme to color ${args.color}...`;
+                subtitlesDiv.style.color = "var(--success)";
+                
+                // Actually do the visual change
+                document.body.style.backgroundColor = args.color;
+                document.body.style.transition = "background-color 0.5s ease";
+                
+                return `Theme background color successfully changed to ${args.color}.`;
             }
         });
 
-        // 3. Connect!
+        // --- UI Logic ---
+        function resetUI() {
+            btnConnect.style.display = 'block';
+            btnConnect.disabled = false;
+            btnConnect.innerText = "Connect Microphone";
+            btnDisconnect.style.display = 'none';
+            authSection.style.opacity = '1';
+            authSection.style.pointerEvents = 'auto';
+            micBar.style.width = '0%';
+            subtitlesDiv.innerText = "Waiting for speech...";
+            subtitlesDiv.style.color = "var(--text-muted)";
+        }
+
+        function renderChatHistory(history) {
+            if (history.length === 0) return;
+            
+            chatHistoryDiv.innerHTML = '';
+            history.forEach(turn => {
+                const bubble = document.createElement('div');
+                bubble.classList.add('chat-bubble');
+                
+                if (turn.role === 'user') {
+                    bubble.classList.add('bubble-user');
+                    bubble.innerText = turn.content;
+                } else if (turn.role === 'assistant') {
+                    bubble.classList.add('bubble-assistant');
+                    bubble.innerText = turn.content;
+                } else if (turn.role === 'tool') {
+                    bubble.classList.add('bubble-tool');
+                    bubble.innerText = `🔧 Tool Executed: ${turn.name} -> ${turn.content}`;
+                }
+                
+                chatHistoryDiv.appendChild(bubble);
+            });
+            
+            // Auto scroll to bottom
+            chatHistoryDiv.scrollTop = chatHistoryDiv.scrollHeight;
+        }
+
+        // --- Event Listeners ---
         btnConnect.addEventListener('click', async () => {
             const apiKey = document.getElementById('api-key-input').value.trim();
             if (!apiKey) {
-                statusDiv.innerText = "Error: Please enter an API Key.";
+                alert("Please enter an API Key.");
                 return;
             }
 
@@ -175,14 +445,10 @@
             btnConnect.innerText = "Authenticating...";
             
             try {
-                // Set the key. The SDK handles the rest!
                 client.set(apiKey);
                 await client.connect();
             } catch (err) {
-                console.error(err);
-                statusDiv.innerText = "Error: " + err.message;
-                btnConnect.disabled = false;
-                btnConnect.innerText = "Connect Microphone";
+                // Error is handled by onError callback
             }
         });
 
