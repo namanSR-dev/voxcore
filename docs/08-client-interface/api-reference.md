@@ -134,11 +134,19 @@ This is how you inject your application's local logic (like fetching a database,
 - `execute` (async function): A function written by you. **This is where the magic happens.**
 
 > [!TIP]
-> **How `execute` works:** Because you write this function inside your app, it has full access to your app's state. When the AI triggers the tool, the SDK automatically runs your function and passes it the LLM's arguments. You can update your React state, mutate variables, or change the DOM right there! Whatever you `return` from the function will be silently sent back to the AI.
+> **Capturing Tool Data for Your UI**
+> You might wonder: *"If the SDK automatically triggers my tool in the background, how do I capture the returned data to update my own UI? Do I have to wait for the AI to speak?"*
+> 
+> **No!** Because you write the `execute` function directly inside your frontend code, it has full access to your application's state (closures). 
+> 1. You fetch the data.
+> 2. You update your UI variables/React state **instantly** inside the function.
+> 3. You `return` the data, which the SDK silently forwards back to the AI.
+> 
+> **You do not need to call the tool twice.** The SDK handles the AI, and you handle your UI, all in the exact same function.
 
 **Complete Example:**
 ```javascript
-// A variable in your frontend state
+// A variable in your frontend state (e.g., React state)
 let latestWeatherData = null;
 
 voxcore.registerTool({
@@ -152,16 +160,16 @@ voxcore.registerTool({
     required: ["location"]
   },
   
-  // The SDK calls this function automatically!
+  // The SDK calls this function automatically when the LLM asks for it!
   execute: async (args) => {
-    // 1. Fetch data
+    // 1. Fetch data from your database or API
     const weather = await myWeatherApi.fetch(args.location);
     
-    // 2. Update your own App UI / State!
+    // 2. CAPTURE DATA: Update your own App UI instantly!
     latestWeatherData = weather;
     document.getElementById("weather-widget").innerText = weather.temp;
     
-    // 3. Return the data back to the AI
+    // 3. Return the data back to VoxCore so the AI knows the answer
     return weather;
   }
 });
