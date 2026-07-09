@@ -8,3 +8,6 @@ class ConversationTurnDTO(BaseModel):
 class TicketRequest(BaseModel):
     session_id: Optional[str] = None
     history: List[ConversationTurnDTO] = Field(default_factory=list, max_length=10)
+
+class ProjectConfigRequest(BaseModel):
+    domain_persona: str = Field(..., max_length=2000, description="The system prompt/persona for the VoxCore AI.")

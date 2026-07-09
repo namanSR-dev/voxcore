@@ -180,6 +180,45 @@ async def generate_ticket(request: TicketRequest, raw_request: Request, db: Asyn
     
     return {"ticket": ticket_uuid}
 
+from voxcore.contracts.api_models import ProjectConfigRequest
+
+@app.get("/v1/projects/config")
+async def get_project_config(raw_request: Request, db: AsyncSession = Depends(get_db)):
+    """Reads the current project configuration (persona)."""
+    auth_header = raw_request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing or invalid Authorization header")
+        
+    api_key = auth_header.split(" ")[1]
+    
+    project_repo = SqlProjectRepository(db)
+    project = await project_repo.get_project_by_api_key(api_key)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API Key")
+        
+    persona = await project_repo.get_project_persona(project.id)
+    return {"domain_persona": persona}
+
+@app.put("/v1/projects/config")
+async def update_project_config(request: ProjectConfigRequest, raw_request: Request, db: AsyncSession = Depends(get_db)):
+    """Updates the project configuration (persona)."""
+    auth_header = raw_request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing or invalid Authorization header")
+        
+    api_key = auth_header.split(" ")[1]
+    
+    project_repo = SqlProjectRepository(db)
+    project = await project_repo.get_project_by_api_key(api_key)
+    if not project:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API Key")
+        
+    success = await project_repo.update_project_persona(project.id, request.domain_persona)
+    if not success:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update configuration")
+        
+    return {"status": "success", "domain_persona": request.domain_persona}
+
 
 
 # --- WebSocket Route ---

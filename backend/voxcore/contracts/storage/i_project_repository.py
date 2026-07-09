@@ -22,3 +22,17 @@ class IProjectRepository(ABC):
         Retrieves a project by its internal ID.
         """
         pass
+        
+    @abstractmethod
+    async def get_project_persona(self, project_id: int) -> Optional[str]:
+        """
+        Retrieves just the domain persona string for a project.
+        """
+        pass
+        
+    @abstractmethod
+    async def update_project_persona(self, project_id: int, persona: str) -> bool:
+        """
+        Updates the domain persona for a project. Returns True if successful.
+        """
+        pass

@@ -49,3 +49,20 @@ class SqlProjectRepository(IProjectRepository):
             return None
             
         return ProjectDomain.model_validate(project_record)
+
+    async def get_project_persona(self, project_id: int) -> Optional[str]:
+        stmt = select(Project.domain_persona).where(Project.id == project_id)
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def update_project_persona(self, project_id: int, persona: str) -> bool:
+        stmt = select(Project).where(Project.id == project_id)
+        result = await self.session.execute(stmt)
+        project = result.scalar_one_or_none()
+        
+        if not project:
+            return False
+            
+        project.domain_persona = persona
+        await self.session.commit()
+        return True
