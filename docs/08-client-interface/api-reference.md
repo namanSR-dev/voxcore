@@ -1,258 +1,204 @@
-# VoxCore Client API Reference
+# @voxcore/client SDK Reference
 
-This document is the definitive guide for integrating client applications with VoxCore. It details every available interface, explaining how it works internally, the correct syntax, expected data payloads, and return values. 
+The VoxCore Client SDK is the official JavaScript/TypeScript library for integrating powerful voice-driven features into your frontend applications (React, Vue, Next.js, Vanilla JS). 
 
-Use this documentation to orchestrate powerful voice-driven features in your applications with absolute precision.
+It abstracts away all the complexity of WebSockets, WebRTC, authentication tickets, PCM audio downsampling, and stateless reconnections so you can focus entirely on building magical user experiences.
 
 ---
 
-## 1. Control Plane (REST API)
+## 1. Initialization & Configuration
 
-The Control Plane consists of HTTP endpoints used for secure authentication, state injection, and configuration management.
+### `new VoxCore()`
+Creates a new instance of the VoxCore client. This does not connect to the microphone or server immediately, allowing you to configure the instance first.
 
-### 1.1 `POST /v1/auth/ticket`
+**Syntax:**
+```typescript
+import { VoxCore } from '@voxcore/client';
 
-**Purpose:** 
-Authenticates your backend server and generates a short-lived (30-second) ticket to securely upgrade to a WebSocket connection. It also injects conversation history directly into the server's RAM for seamless stateless reconnections.
-
-**How it works internally:** 
-The server hashes your API key to authenticate the request, extracts the history payload (if any), slices it to prevent context bloat, and stores it in the `ephemeral_tickets` SQLite table. When the WebSocket connects using this ticket, VoxCore reads the database and boots the `InMemoryStore` with this exact history before starting the AI pipeline.
-
-**Syntax / Headers:**
-```http
-POST /v1/auth/ticket
-Authorization: Bearer <YOUR_API_KEY>
-Content-Type: application/json
+const voxcore = new VoxCore();
 ```
 
-**Request Payload:**
-| Field | Type | Description |
-|---|---|---|
-| `session_id` | `string` (Optional) | A unique UUID representing the user's ongoing conversation. |
-| `history` | `Array<Object>` (Optional) | The conversation history maintained by the client. Maximum of 10 turns. |
+### `voxcore.set(API_KEY)`
+Authenticates the SDK instance with your project's API Key. 
 
-**`history` Object Structure:**
-```json
-{
-  "role": "user | assistant",
-  "content": "The text content" 
-}
+**Syntax:**
+```typescript
+voxcore.set(apiKey: string): void;
 ```
-> **Security Guard:** `content` is strictly limited to a maximum of 1,000 characters per object to prevent malicious LLM context blooming. Intermediate `tool` and `tool_call` roles are strictly ignored.
+> [!IMPORTANT]
+> In production, you should never expose your Master API Key in the frontend. Instead, your backend should use the `POST /v1/auth/ticket` endpoint to generate an ephemeral ticket and pass it to the frontend via `voxcore.connectWithTicket(ticket)`. For rapid prototyping, `voxcore.set(API_KEY)` is perfectly fine.
 
-**Returns:**
-```json
-{
-  "ticket": "b3e89... (UUID v4)"
-}
+### `voxcore.systemPrompt({ Identity, rules, workflow })`
+Dynamically overrides or configures the personality of the AI before connecting. This allows you to build multi-agent systems where the AI switches personas instantly.
+
+**Syntax:**
+```typescript
+voxcore.systemPrompt(config: { Identity?: string, rules?: string, workflow?: string }): void;
 ```
 
-**Code Example:**
+**Example:**
 ```javascript
-async function getTicket(session_id, conversationHistory) {
-  const response = await fetch("http://127.0.0.1:8000/v1/auth/ticket", {
-    method: "POST",
-    headers: {
-      "Authorization": "Bearer sk_voxcore_...",
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ 
-        session_id: session_id,
-        history: conversationHistory // [ { role: "user", content: "Hello" } ]
-    })
-  });
-  const data = await response.json();
-  return data.ticket;
-}
-```
-
-> 💡 **Smart Tip:** When your app detects a network drop (`ws.onclose`), immediately trigger this endpoint again passing your local `conversationHistory` array. The user will never know the server disconnected!
-
----
-
-### 1.2 `GET /v1/projects/config`
-
-**Purpose:** 
-Reads the current System Prompt (Domain Persona) configured for the project associated with the API key.
-
-**Syntax / Headers:**
-```http
-GET /v1/projects/config
-Authorization: Bearer <YOUR_API_KEY>
-```
-
-**Returns:**
-```json
-{
-  "domain_persona": "You are a helpful AI assistant..."
-}
+voxcore.systemPrompt({
+  Identity: "You are a professional customer support agent for Acme Corp.",
+  rules: "Keep answers under two sentences. Never mention competitors.",
+  workflow: "Ask for the user's order number first, then check the status."
+});
 ```
 
 ---
 
-### 1.3 `PUT /v1/projects/config`
+## 2. Events & Data Streams
 
-**Purpose:** 
-Programmatically updates the System Prompt (Domain Persona) for the project. 
+The SDK uses an event-driven architecture (`voxcore.on(event, callback)`). You provide a `callback` function, and the SDK will automatically trigger it whenever the event occurs, passing the data directly to your function.
 
-**How it works internally:** 
-This safely executes an `UPDATE` on the `projects` table. The next time a WebSocket connection is established with this project's API key, `InMemoryStore.build_context()` will merge this new persona with the core platform rules.
+### `voxcore.on("stateChange", callback)`
+Listens for changes in the SDK's lifecycle. Perfect for updating UI loaders, recording indicators, or 3D avatars.
 
-**Syntax / Headers:**
-```http
-PUT /v1/projects/config
-Authorization: Bearer <YOUR_API_KEY>
-Content-Type: application/json
-```
+**Callback Receives:** `state: "listening" | "thinking" | "synthesizing" | "speaking" | "interrupted" | "idle"`
 
-**Request Payload:**
-| Field | Type | Description |
-|---|---|---|
-| `domain_persona` | `string` | The system prompt to inject into the LLM. Max 2,000 characters. |
-
-**Returns:**
-```json
-{
-  "status": "success",
-  "domain_persona": "Your new persona..."
-}
-```
-
-**Code Example:**
+**Example:**
 ```javascript
-// Perfect for a Developer Dashboard where users save their prompt settings!
-async function updatePersona(newPrompt) {
-  await fetch("http://127.0.0.1:8000/v1/projects/config", {
-    method: "PUT",
-    headers: {
-      "Authorization": "Bearer sk_voxcore_...",
-      "Content-Type": "application/json"
+voxcore.on("stateChange", (state) => {
+  if (state === "listening") {
+    showRecordingIndicator();
+  } else if (state === "interrupted") {
+    console.log("The user spoke over the AI!");
+  }
+});
+```
+
+### `voxcore.on("transcription", callback)`
+Yields the real-time stream of what the AI is *about to say*. 
+
+**Callback Receives:** `text: string`
+
+**Example:**
+```javascript
+// Perfect for blazing-fast subtitles!
+let subtitleBuffer = "";
+voxcore.on("transcription", (text) => {
+  subtitleBuffer += text;
+  document.getElementById('subtitles').innerText = subtitleBuffer;
+});
+```
+
+### `voxcore.on("user_message", callback)`
+Fired when VoxCore successfully transcribes the user's speech into text. 
+
+**Callback Receives:** `text: string`
+
+### `voxcore.on("chat", callback)`
+Yields a beautifully structured chat object to easily build iMessage-style chat UIs. It combines both the user's speech and the AI's final response into a single event stream.
+
+**Callback Receives:** `message: { role: 'user' | 'voxcore', text: string, timestamp: number }`
+
+**Example:**
+```javascript
+const chatHistory = [];
+
+voxcore.on("chat", (message) => {
+  chatHistory.push(message);
+  renderChatBox(chatHistory);
+});
+```
+
+### `voxcore.on("micLoudness", callback)`
+Fires continuously while the microphone is active, yielding the current volume level.
+
+**Callback Receives:** `volume: number` (0 to 100)
+
+**Example:**
+```javascript
+// Make a glowing visualizer ring
+voxcore.on("micLoudness", (volume) => {
+  document.getElementById('glow-ring').style.opacity = volume / 100;
+});
+```
+
+### `voxcore.on("error", callback)`
+Catches graceful errors without crashing the application.
+
+**Callback Receives:** `error: { code: number, message: string }`
+
+---
+
+## 3. Workflow Orchestration (Function Calling)
+
+### `voxcore.registerTool(toolObject)`
+This is how you inject your application's local logic (like fetching a database, calling an external API, or changing a UI color) directly into the AI's brain. 
+
+**The `toolObject` Structure:**
+- `name` (string): The function name (no spaces).
+- `description` (string): A clear description of when the AI should use this tool.
+- `parameters` (object): A JSON schema defining exactly what arguments the LLM must provide.
+- `execute` (async function): A function written by you. **This is where the magic happens.**
+
+> [!TIP]
+> **How `execute` works:** Because you write this function inside your app, it has full access to your app's state. When the AI triggers the tool, the SDK automatically runs your function and passes it the LLM's arguments. You can update your React state, mutate variables, or change the DOM right there! Whatever you `return` from the function will be silently sent back to the AI.
+
+**Complete Example:**
+```javascript
+// A variable in your frontend state
+let latestWeatherData = null;
+
+voxcore.registerTool({
+  name: "get_weather",
+  description: "Fetches the current weather for a specific city.",
+  parameters: {
+    type: "object",
+    properties: {
+      location: { type: "string", description: "The city name, e.g. New York" }
     },
-    body: JSON.stringify({ domain_persona: newPrompt })
-  });
-}
+    required: ["location"]
+  },
+  
+  // The SDK calls this function automatically!
+  execute: async (args) => {
+    // 1. Fetch data
+    const weather = await myWeatherApi.fetch(args.location);
+    
+    // 2. Update your own App UI / State!
+    latestWeatherData = weather;
+    document.getElementById("weather-widget").innerText = weather.temp;
+    
+    // 3. Return the data back to the AI
+    return weather;
+  }
+});
 ```
 
 ---
 
-## 2. Streaming Plane (WebSocket API)
+## 4. Connection Management
 
-The streaming plane allows bi-directional real-time communication. Connect by appending your ticket as a query parameter.
+### `voxcore.connect()`
+The single command that starts the magic. Calling this method will:
+1. Request microphone permissions from the user.
+2. Securely authenticate with the VoxCore backend.
+3. Automatically sync any previous conversation history (Stateless Memory).
+4. Open the streaming WebSocket pipeline.
 
-**Connection URL:**
-`ws://127.0.0.1:8000/v1/voice?ticket=<TICKET_UUID>`
-
-### 2.1 Upstream Events (Client ➡️ Server)
-
-Send these over the WebSocket using `ws.send()`.
-
-#### Binary Audio Stream
-- **Payload:** `ArrayBuffer` (Int16 PCM data, 16000Hz, Mono).
-- **Purpose:** Streams the microphone directly to the VAD and Speech-to-Text engine.
-- **Syntax:** `ws.send(int16Array.buffer)`
-
-#### `register_tools`
-- **Purpose:** Injects the client's available local functions into the server's RAM for the duration of the connection.
-- **How it works:** The JSON schemas are converted directly into the native `tools` parameter of the LLM API, ensuring deterministic function calling.
-- **Payload:**
-```json
-{
-  "type": "register_tools",
-  "tools": [
-    {
-      "name": "get_weather",
-      "description": "Fetch the local weather.",
-      "parameters": {
-        "type": "object",
-        "properties": {
-          "location": { "type": "string" }
-        }
-      }
-    }
-  ]
-}
+**Syntax:**
+```typescript
+voxcore.connect(): Promise<void>;
 ```
 
-#### `tool_result`
-- **Purpose:** Submit the output of a local function back to VoxCore so the AI can finish generating its response.
-- **Payload:**
-```json
-{
-  "type": "tool_result",
-  "name": "get_weather",
-  "result": "72 degrees and sunny"
-}
+**Example:**
+```javascript
+document.getElementById('start-btn').addEventListener('click', async () => {
+  try {
+    await voxcore.connect();
+    console.log("Connected and listening!");
+  } catch (error) {
+    console.error("Failed to connect:", error.message);
+  }
+});
 ```
 
-> 💡 **Smart Tip:** If your tool is an async database call, send the `tool_result` once the promise resolves. VoxCore's pipeline suspends processing and waits patiently for your result!
+### `voxcore.disconnect()`
+Gracefully terminates the session. It stops the microphone track, closes the WebSocket, and signals the VoxCore backend to release memory resources.
 
----
-
-### 2.2 Downstream Events (Server ➡️ Client)
-
-Listen for these by parsing `ws.onmessage`.
-
-#### Binary Audio Stream
-- **Payload:** `ArrayBuffer` (WAV/PCM data).
-- **Purpose:** The synthesized AI speech ready for playback.
-- **Handling:** Feed the buffer into a Web Audio API `AudioContext` queue.
-
-#### `user_transcript`
-- **Purpose:** Confirms exactly what VoxCore heard the user say.
-- **Payload:**
-```json
-{
-  "type": "user_transcript",
-  "text": "What is the weather?"
-}
+**Syntax:**
+```typescript
+voxcore.disconnect(): void;
 ```
-> **Smart Tip:** Append this text to your local `conversationHistory` array to keep your client in sync.
-
-#### `tts_text`
-- **Purpose:** Yields the text of the sentence the AI is *about* to speak. 
-- **Payload:**
-```json
-{
-  "type": "tts_text",
-  "text": "Let me check that for you."
-}
-```
-> **Smart Tip:** Use this to render blazing-fast subtitles in your UI right before the audio actually starts playing!
-
-#### `turn_finalized` (CRITICAL)
-- **Purpose:** Emitted when the AI finishes speaking, OR when the AI is interrupted by the user. It contains the *exact, cleanly truncated* string of what was actually spoken out loud.
-- **Payload:**
-```json
-{
-  "type": "turn_finalized",
-  "role": "assistant",
-  "text": "Let me check that for you. It looks like it is 72"
-}
-```
-> **Handling:** When this event fires, push the `text` into your `conversationHistory`. This guarantees your client never accidentally saves text that the user didn't actually hear!
-
-#### `pause`, `resume`, `interrupt`
-- **Purpose:** Real-time playback control triggered by the VAD.
-- **Payload:**
-```json
-{ "type": "pause" }
-```
-- **Handling:**
-  - `pause`: Temporarily halt your audio player (user started speaking).
-  - `resume`: Un-pause your audio player (user stopped speaking, false alarm).
-  - `interrupt`: Completely clear your audio queue (interruption confirmed, AI pipeline aborted).
-
-#### `tool_call`
-- **Purpose:** The LLM is asking your client application to run a local function.
-- **Payload:**
-```json
-{
-  "type": "tool_call",
-  "name": "get_weather",
-  "arguments": "{\"location\": \"New York\"}"
-}
-```
-- **Handling:** Parse the JSON arguments, execute your JavaScript/Swift/Python function, and send back a `tool_result` event!
-
----
-*VoxCore v1.0.0 Documentation - Designed for endless possibilities.*
