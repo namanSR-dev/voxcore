@@ -14,19 +14,18 @@ Creates a new instance of the VoxCore client. This does not connect to the micro
 **Syntax:**
 ```typescript
 import { VoxCore } from '@voxcore/client';
-
 const voxcore = new VoxCore();
 ```
 
 ### `voxcore.set(API_KEY)`
-Authenticates the SDK instance with your project's API Key. 
+Securely configures the SDK with your project's API Key. 
 
 **Syntax:**
 ```typescript
 voxcore.set(apiKey: string): void;
 ```
-> [!IMPORTANT]
-> In production, you should never expose your Master API Key in the frontend. Instead, your backend should use the `POST /v1/auth/ticket` endpoint to generate an ephemeral ticket and pass it to the frontend via `voxcore.connectWithTicket(ticket)`. For rapid prototyping, `voxcore.set(API_KEY)` is perfectly fine.
+> [!NOTE]
+> **Internal Authentication Abstraction:** You do not need to worry about ticketing, websocket handshakes, or token renewals. Once you call `voxcore.set(API_KEY)`, the SDK internally handles the secure ticket generation via the VoxCore REST API automatically when you call `connect()`.
 
 ### `voxcore.systemPrompt({ Identity, rules, workflow })`
 Dynamically overrides or configures the personality of the AI before connecting. This allows you to build multi-agent systems where the AI switches personas instantly.
@@ -47,18 +46,21 @@ voxcore.systemPrompt({
 
 ---
 
-## 2. Events & Data Streams
+## 2. Event Listeners & Data Streams
 
-The SDK uses an event-driven architecture (`voxcore.on(event, callback)`). You provide a `callback` function, and the SDK will automatically trigger it whenever the event occurs, passing the data directly to your function.
+The SDK uses highly intuitive, intent-based methods to yield data continuously from VoxCore.
 
-### `voxcore.on("stateChange", callback)`
+### `voxcore.onStateChange(callback)`
 Listens for changes in the SDK's lifecycle. Perfect for updating UI loaders, recording indicators, or 3D avatars.
 
-**Callback Receives:** `state: "listening" | "thinking" | "synthesizing" | "speaking" | "interrupted" | "idle"`
+**Syntax:**
+```typescript
+voxcore.onStateChange((state: "listening" | "thinking" | "synthesizing" | "speaking" | "interrupted" | "idle") => void);
+```
 
 **Example:**
 ```javascript
-voxcore.on("stateChange", (state) => {
+voxcore.onStateChange((state) => {
   if (state === "listening") {
     showRecordingIndicator();
   } else if (state === "interrupted") {
@@ -67,58 +69,62 @@ voxcore.on("stateChange", (state) => {
 });
 ```
 
-### `voxcore.on("transcription", callback)`
-Yields the real-time stream of what the AI is *about to say*. 
+### `voxcore.onTranscription(callback)`
+Yields the real-time stream of what the AI is *about to say*, sentence by sentence.
 
-**Callback Receives:** `text: string`
+**Syntax:**
+```typescript
+voxcore.onTranscription((sentence: string) => void);
+```
 
 **Example:**
 ```javascript
 // Perfect for blazing-fast subtitles!
-let subtitleBuffer = "";
-voxcore.on("transcription", (text) => {
-  subtitleBuffer += text;
-  document.getElementById('subtitles').innerText = subtitleBuffer;
+voxcore.onTranscription((sentence) => {
+  document.getElementById('subtitles').innerText = sentence;
 });
 ```
 
-### `voxcore.on("user_message", callback)`
-Fired when VoxCore successfully transcribes the user's speech into text. 
+### `voxcore.onChatUpdate(callback)`
+Yields the complete, beautifully structured conversation array. Every time the user speaks or the AI responds, this callback fires with the updated array, making it incredibly easy to render an iMessage-style chat UI.
 
-**Callback Receives:** `text: string`
-
-### `voxcore.on("chat", callback)`
-Yields a beautifully structured chat object to easily build iMessage-style chat UIs. It combines both the user's speech and the AI's final response into a single event stream.
-
-**Callback Receives:** `message: { role: 'user' | 'voxcore', text: string, timestamp: number }`
+**Syntax:**
+```typescript
+type ChatMessage = { role: 'user' | 'voxcore', text: string, timestamp: number };
+voxcore.onChatUpdate((chatHistory: ChatMessage[]) => void);
+```
 
 **Example:**
 ```javascript
-const chatHistory = [];
-
-voxcore.on("chat", (message) => {
-  chatHistory.push(message);
-  renderChatBox(chatHistory);
+// In React, you would just do:
+voxcore.onChatUpdate((chatHistory) => {
+  setMessages(chatHistory);
 });
 ```
 
-### `voxcore.on("micLoudness", callback)`
+### `voxcore.onMicLoudness(callback)`
 Fires continuously while the microphone is active, yielding the current volume level.
 
-**Callback Receives:** `volume: number` (0 to 100)
+**Syntax:**
+```typescript
+voxcore.onMicLoudness((volume: number) => void); // volume is 0 to 100
+```
 
 **Example:**
 ```javascript
 // Make a glowing visualizer ring
-voxcore.on("micLoudness", (volume) => {
+voxcore.onMicLoudness((volume) => {
   document.getElementById('glow-ring').style.opacity = volume / 100;
 });
 ```
 
-### `voxcore.on("error", callback)`
+### `voxcore.onError(callback)`
 Catches graceful errors without crashing the application.
 
-**Callback Receives:** `error: { code: number, message: string }`
+**Syntax:**
+```typescript
+voxcore.onError((error: { code: number, message: string }) => void);
+```
 
 ---
 
@@ -182,7 +188,7 @@ voxcore.registerTool({
 ### `voxcore.connect()`
 The single command that starts the magic. Calling this method will:
 1. Request microphone permissions from the user.
-2. Securely authenticate with the VoxCore backend.
+2. Silently fetch the authentication ticket using your configured API Key.
 3. Automatically sync any previous conversation history (Stateless Memory).
 4. Open the streaming WebSocket pipeline.
 
