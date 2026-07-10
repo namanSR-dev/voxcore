@@ -14,7 +14,12 @@ Creates a new instance of the VoxCore client. This does not connect to the micro
 **Syntax:**
 ```typescript
 import { VoxCore } from '@voxcore/client';
+
+// The SDK internally defaults to the VoxCore production URL (https://api.voxcore.dev)
 const voxcore = new VoxCore();
+
+// (Optional) For local testing, you can override the Base URL:
+const localVoxCore = new VoxCore({ baseUrl: "http://127.0.0.1:8000" });
 ```
 
 ### `voxcore.set(API_KEY)`

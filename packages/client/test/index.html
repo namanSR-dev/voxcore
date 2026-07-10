@@ -319,7 +319,10 @@
         const subtitlesDiv = document.getElementById('live-subtitles');
         const micBar = document.getElementById('mic-bar');
 
-        const client = new VoxCore();
+        // Initialize VoxCore SDK
+        const client = new VoxCore({
+            baseUrl: 'http://127.0.0.1:8000' // Local dev override
+        });
 
         // --- SDK Event Listeners ---
 

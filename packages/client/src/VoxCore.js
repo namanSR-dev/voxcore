@@ -3,7 +3,7 @@ import { VoxCoreEngine } from './core/VoxCoreEngine.js';
 export class VoxCore {
     constructor(config = {}) {
         this.apiKey = config.apiKey || null;
-        this.baseUrl = config.baseUrl || 'http://127.0.0.1:8000';
+        this.baseUrl = config.baseUrl || 'https://api.voxcore.dev'; // Production default
         this.sessionId = config.sessionId || "default_session";
         this.persona = null;
         
